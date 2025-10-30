@@ -1,0 +1,273 @@
+<div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100">
+  <!-- Header -->
+  <header class="bg-gray-900/50 backdrop-blur-sm border-b border-gray-700 sticky top-0 z-40">
+    <div class="container mx-auto px-4 py-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold bg-gradient-to-r from-teal-400 to-blue-500 bg-clip-text text-transparent">
+            Análise de Crédito - Renda Fixa
+          </h1>
+          <p class="text-sm text-gray-400 mt-1">
+            Análise integrada de ativos com assessment
+          </p>
+        </div>
+        <div class="flex items-center gap-4">
+          <span class="text-sm text-gray-400">
+            <%= length(@securities) %> ativos carregados
+          </span>
+          <%= if MapSet.size(@selected_securities) > 0 do %>
+            <span class="px-3 py-1 bg-teal-500/20 text-teal-400 rounded-full text-sm font-medium">
+              <%= MapSet.size(@selected_securities) %> selecionados
+            </span>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="container mx-auto px-4 py-6">
+    <!-- Filters Section -->
+    <div class="bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-700 p-6 mb-6">
+      <h2 class="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+        </svg>
+        Filtros de Análise
+      </h2>
+
+      <form phx-submit="apply_filters">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- Security Type Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Tipo de Ativo</label>
+            <select
+              name="security_type"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            >
+              <option value="">Todos</option>
+              <option value="cri" selected={@filters[:security_type] == "cri"}>CRI</option>
+              <option value="cra" selected={@filters[:security_type] == "cra"}>CRA</option>
+              <option value="debenture" selected={@filters[:security_type] == "debenture"}>Debênture</option>
+              <option value="debenture_plus" selected={@filters[:security_type] == "debenture_plus"}>Debênture Plus</option>
+            </select>
+          </div>
+
+          <!-- Benchmark Index Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Benchmark Index</label>
+            <select
+              name="benchmark_index"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            >
+              <option value="">Todos</option>
+              <%= for index <- @benchmark_indexes do %>
+                <option value={index} selected={@filters[:benchmark_index] == index}>
+                  <%= String.upcase(index) %>
+                </option>
+              <% end %>
+            </select>
+          </div>
+
+          <!-- Issuer Filter (Checkboxes) -->
+          <div class="lg:col-span-1">
+            <label class="block text-sm font-medium text-gray-300 mb-2">
+              Emissores
+              <span class="text-xs text-gray-400">
+                (<%= if @filters[:issuers], do: length(@filters[:issuers]), else: 0 %> selecionados)
+              </span>
+            </label>
+            <div class="bg-gray-900 border border-gray-600 rounded-lg p-3 max-h-[200px] overflow-y-auto">
+              <div class="space-y-2">
+                <%= for issuer <- @issuers do %>
+                  <label class="flex items-start gap-2 cursor-pointer hover:bg-gray-800 p-2 rounded transition-colors">
+                    <input
+                      type="checkbox"
+                      name="issuers[]"
+                      value={issuer}
+                      checked={@filters[:issuers] && issuer in @filters[:issuers]}
+                      class="mt-0.5 w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500 focus:ring-offset-gray-900"
+                    />
+                    <span class="text-sm text-gray-200 leading-tight flex-1"><%= issuer %></span>
+                  </label>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex gap-3 mt-4">
+          <button
+            type="submit"
+            class="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            Aplicar Filtros
+          </button>
+          <button
+            type="button"
+            phx-click="clear_filters"
+            class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg font-medium transition-colors"
+          >
+            Limpar
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Chart Section -->
+    <div class="bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-700 p-6 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-200 flex items-center gap-2">
+          <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          Gráfico de Dispersão: Duration (anos) vs Rating Hub
+        </h2>
+        <div class="text-sm text-gray-400">
+          <%= if MapSet.size(@selected_securities) > 0 do %>
+            Mostrando <%= MapSet.size(@selected_securities) %> ativos selecionados
+          <% else %>
+            Mostrando todos os ativos com assessment
+          <% end %>
+        </div>
+      </div>
+
+      <div
+        id="credit-chart"
+        phx-hook="ECharts"
+        data-chart-data={chart_data(@securities, @selected_securities)}
+        class="w-full h-[500px] bg-gray-900/50 rounded-lg"
+      >
+      </div>
+    </div>
+
+    <!-- Data Table Section -->
+    <div class="bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-700 overflow-hidden">
+      <div class="p-6 border-b border-gray-700">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-200 flex items-center gap-2">
+            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Tabela de Análise - Securities & Assessments
+          </h2>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              phx-click="select_all"
+              class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded transition-colors"
+            >
+              Selecionar Todos
+            </button>
+            <button
+              type="button"
+              phx-click="deselect_all"
+              class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded transition-colors"
+            >
+              Desmarcar Todos
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-900/70 text-gray-300 text-sm font-semibold">
+            <tr>
+              <th class="px-4 py-3 text-left">
+                <input type="checkbox" class="w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500" />
+              </th>
+              <th class="px-4 py-3 text-left">Código</th>
+              <th class="px-4 py-3 text-left">Emissor</th>
+              <th class="px-4 py-3 text-left">Tipo</th>
+              <th class="px-4 py-3 text-left">Benchmark</th>
+              <th class="px-4 py-3 text-right">Duration (anos)</th>
+              <th class="px-4 py-3 text-right">Taxa</th>
+              <th class="px-4 py-3 text-left">Rating Hub</th>
+              <th class="px-4 py-3 text-right">Solvency</th>
+              <th class="px-4 py-3 text-right">Spread</th>
+              <th class="px-4 py-3 text-left">Recomendação</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-700">
+            <%= for security <- @securities do %>
+              <tr class={"hover:bg-gray-700/30 transition-colors #{if MapSet.member?(@selected_securities, security.id), do: "bg-teal-900/20"}"}>
+                <td class="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    phx-click="toggle_security"
+                    phx-value-id={security.id}
+                    checked={MapSet.member?(@selected_securities, security.id)}
+                    class="w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500"
+                  />
+                </td>
+                <td class="px-4 py-3 font-mono text-sm text-teal-400">
+                  <%= security.code %>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-200">
+                  <%= security.issuer %>
+                </td>
+                <td class="px-4 py-3 text-sm">
+                  <span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-200">
+                    <%= format_security_type(security.security_type) %>
+                  </span>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-300">
+                  <%= security.benchmark_index || "-" %>
+                </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-200 font-medium">
+                  <%= days_to_years(security.duration) %> anos
+                </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-200">
+                  <%= format_decimal(security.coupon_rate) %>%
+                </td>
+                <td class="px-4 py-3 text-sm">
+                  <%= if security.grade do %>
+                    <span class="px-2 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-teal-500 to-blue-500 text-white">
+                      <%= security.grade %>
+                    </span>
+                  <% else %>
+                    <span class="text-gray-500 text-xs">Sem assessment</span>
+                  <% end %>
+                </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-200">
+                  <%= format_decimal(security.solvency_ratio) %>
+                </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-200">
+                  <%= format_decimal(security.credit_spread) %>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
+                  <%= security.recommendation || "-" %>
+                </td>
+              </tr>
+            <% end %>
+
+            <%= if Enum.empty?(@securities) do %>
+              <tr>
+                <td colspan="11" class="px-4 py-12 text-center text-gray-400">
+                  <div class="flex flex-col items-center gap-2">
+                    <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                    </svg>
+                    <p class="text-lg font-medium">Nenhum ativo encontrado</p>
+                    <p class="text-sm">Tente ajustar os filtros de busca</p>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-gray-900/50 backdrop-blur-sm border-t border-gray-700 mt-12 py-6">
+    <div class="container mx-auto px-4 text-center text-sm text-gray-400">
+      <p>Hub do Investidor - Credit Radar © 2025</p>
+      <p class="mt-1">Análise de crédito em renda fixa com dados da ANBIMA</p>
+    </div>
+  </footer>
+</div>
