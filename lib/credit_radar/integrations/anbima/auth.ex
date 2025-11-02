@@ -1,14 +1,44 @@
 defmodule CreditRadar.Integrations.Anbima.Auth do
+  @moduledoc """
+  Authentication module for Anbima API integration.
+  Handles OAuth token retrieval and caching.
+  """
+
+  require Logger
+
   @token_store_key :anbima_token
-  require IEx
 
   def fetch_token! do
+    # Garante que o Cache está inicializado antes de tentar usar
+    ensure_cache_started!()
+
     case CreditRadar.Cache.get(@token_store_key) do
-      nil ->  
+      nil ->
+        Logger.debug("Anbima token not in cache, fetching new token")
         client()
         |> Req.post(url: "/oauth/access-token", json: %{grant_type: "client_credentials"})
         |> save_token()
-      token -> token
+      token ->
+        Logger.debug("Using cached Anbima token")
+        token
+    end
+  rescue
+    e ->
+      Logger.error("Failed to fetch Anbima token: #{inspect(e)}")
+      Logger.error(Exception.format(:error, e, __STACKTRACE__))
+      reraise e, __STACKTRACE__
+  end
+
+  defp ensure_cache_started!(retries \\ 50) do
+    case Process.whereis(CreditRadar.Cache) do
+      nil when retries > 0 ->
+        Logger.warning("CreditRadar.Cache not started, waiting... (#{retries} retries left)")
+        Process.sleep(100)
+        ensure_cache_started!(retries - 1)
+      nil ->
+        raise "CreditRadar.Cache failed to start after 5 seconds"
+      _pid ->
+        :ok
     end
   end
 

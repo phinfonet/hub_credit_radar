@@ -68,29 +68,52 @@
             </select>
           </div>
 
-          <!-- Issuer Filter (Checkboxes) -->
-          <div class="lg:col-span-1">
+          <!-- Grade Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Grade</label>
+            <select
+              name="grade"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            >
+              <option value="">Todos</option>
+              <option value="hy" selected={@filters[:grade] == "hy"}>HY</option>
+              <option value="hg" selected={@filters[:grade] == "hg"}>HG</option>
+            </select>
+          </div>
+
+          <!-- Recommendation Filter -->
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Recomendação</label>
+            <select
+              name="recommendation"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            >
+              <option value="">Todos</option>
+              <option value="enter" selected={@filters[:recommendation] == "enter"}>Entrar</option>
+              <option value="not_enter" selected={@filters[:recommendation] == "not_enter"}>Não Entrar</option>
+            </select>
+          </div>
+
+          <!-- Issuer Filter (Tom Select) -->
+          <div class="lg:col-span-2">
             <label class="block text-sm font-medium text-gray-300 mb-2">
               Emissores
-              <span class="text-xs text-gray-400">
-                (<%= if @filters[:issuers], do: length(@filters[:issuers]), else: 0 %> selecionados)
-              </span>
             </label>
-            <div class="bg-gray-900 border border-gray-600 rounded-lg p-3 max-h-[200px] overflow-y-auto">
-              <div class="space-y-2">
+            <div phx-hook="TomSelect" id="issuer-select-wrapper">
+              <select
+                name="issuers[]"
+                multiple
+                class="w-full"
+              >
                 <%= for issuer <- @issuers do %>
-                  <label class="flex items-start gap-2 cursor-pointer hover:bg-gray-800 p-2 rounded transition-colors">
-                    <input
-                      type="checkbox"
-                      name="issuers[]"
-                      value={issuer}
-                      checked={@filters[:issuers] && issuer in @filters[:issuers]}
-                      class="mt-0.5 w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500 focus:ring-offset-gray-900"
-                    />
-                    <span class="text-sm text-gray-200 leading-tight flex-1"><%= issuer %></span>
-                  </label>
+                  <option
+                    value={issuer}
+                    selected={@filters[:issuers] && issuer in @filters[:issuers]}
+                  >
+                    <%= issuer %>
+                  </option>
                 <% end %>
-              </div>
+              </select>
             </div>
           </div>
         </div>
@@ -177,15 +200,23 @@
           <thead class="bg-gray-900/70 text-gray-300 text-sm font-semibold">
             <tr>
               <th class="px-4 py-3 text-left">
-                <input type="checkbox" class="w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500" />
+                <input
+                  type="checkbox"
+                  phx-click={if MapSet.size(@selected_securities) == length(@securities) and length(@securities) > 0, do: "deselect_all", else: "select_all"}
+                  checked={MapSet.size(@selected_securities) == length(@securities) and length(@securities) > 0}
+                  class="w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500 cursor-pointer"
+                />
               </th>
               <th class="px-4 py-3 text-left">Código</th>
               <th class="px-4 py-3 text-left">Emissor</th>
               <th class="px-4 py-3 text-left">Tipo</th>
               <th class="px-4 py-3 text-left">Benchmark</th>
               <th class="px-4 py-3 text-right">Duration (anos)</th>
-              <th class="px-4 py-3 text-right">Taxa</th>
-              <th class="px-4 py-3 text-left">Rating Hub</th>
+              <th class="px-4 py-3 text-right">Taxa Indicativa</th>
+              <th class="px-4 py-3 text-right">Taxa Correção</th>
+              <th class="px-4 py-3 text-right">Retorno Esperado</th>
+              <th class="px-4 py-3 text-left">Grade</th>
+              <th class="px-4 py-3 text-right">Rating Hub</th>
               <th class="px-4 py-3 text-right">Solvency</th>
               <th class="px-4 py-3 text-right">Spread</th>
               <th class="px-4 py-3 text-left">Recomendação</th>
@@ -223,13 +254,28 @@
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
                   <%= format_decimal(security.coupon_rate) %>%
                 </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-200">
+                  <%= format_decimal(security.correction_rate) %>%
+                </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-200 font-semibold">
+                  <%= format_decimal(security.expected_return) %>%
+                </td>
                 <td class="px-4 py-3 text-sm">
                   <%= if security.grade do %>
-                    <span class="px-2 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-teal-500 to-blue-500 text-white">
-                      <%= security.grade %>
+                    <span class="px-2 py-1 rounded-full text-xs font-bold bg-gray-700 text-gray-200">
+                      <%= String.upcase(to_string(security.grade)) %>
                     </span>
                   <% else %>
-                    <span class="text-gray-500 text-xs">Sem assessment</span>
+                    <span class="text-gray-500 text-xs">-</span>
+                  <% end %>
+                </td>
+                <td class="px-4 py-3 text-sm text-right">
+                  <%= if security.rating_hub do %>
+                    <span class="font-bold text-lg bg-gradient-to-r from-teal-500 to-blue-500 bg-clip-text text-transparent">
+                      <%= format_decimal(security.rating_hub) %>
+                    </span>
+                  <% else %>
+                    <span class="text-gray-500 text-xs">-</span>
                   <% end %>
                 </td>
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
@@ -238,15 +284,22 @@
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
                   <%= format_decimal(security.credit_spread) %>
                 </td>
-                <td class="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
-                  <%= security.recommendation || "-" %>
+                <td class="px-4 py-3 text-sm">
+                  <%= case security.recommendation do %>
+                    <% :enter -> %>
+                      <span class="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">Entrar</span>
+                    <% :not_enter -> %>
+                      <span class="px-2 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400">Não Entrar</span>
+                    <% _ -> %>
+                      <span class="text-gray-500 text-xs">-</span>
+                  <% end %>
                 </td>
               </tr>
             <% end %>
 
             <%= if Enum.empty?(@securities) do %>
               <tr>
-                <td colspan="11" class="px-4 py-12 text-center text-gray-400">
+                <td colspan="14" class="px-4 py-12 text-center text-gray-400">
                   <div class="flex flex-col items-center gap-2">
                     <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />

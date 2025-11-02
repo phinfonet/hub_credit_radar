@@ -83,12 +83,23 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
     %{}
     |> put_string_filter(:security_type, params["security_type"])
     |> put_string_filter(:benchmark_index, params["benchmark_index"])
+    |> put_atom_filter(:grade, params["grade"])
+    |> put_atom_filter(:recommendation, params["recommendation"])
     |> put_issuers_filter(params["issuers"])
   end
 
   defp put_string_filter(filters, _key, nil), do: filters
   defp put_string_filter(filters, _key, ""), do: filters
   defp put_string_filter(filters, key, value), do: Map.put(filters, key, value)
+
+  defp put_atom_filter(filters, _key, nil), do: filters
+  defp put_atom_filter(filters, _key, ""), do: filters
+  defp put_atom_filter(filters, key, value) when is_binary(value) do
+    Map.put(filters, key, String.to_existing_atom(value))
+  rescue
+    ArgumentError -> filters
+  end
+  defp put_atom_filter(filters, _key, _value), do: filters
 
   defp put_integer_filter(filters, _key, nil), do: filters
   defp put_integer_filter(filters, _key, ""), do: filters
@@ -138,37 +149,31 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
         securities
       end
 
-    # Only include securities with grades for the chart
-    assessed = Enum.filter(data_securities, & &1.grade)
+    # Only include securities with rating_hub for the chart
+    assessed = Enum.filter(data_securities, & &1.rating_hub)
 
     series =
       Enum.map(assessed, fn sec ->
         duration_years = days_to_years(sec.duration)
+        rating_hub_value = sec.rating_hub && Decimal.to_float(sec.rating_hub)
 
         %{
-          value: [duration_years, sec.grade],
+          value: [duration_years, rating_hub_value],
           code: sec.code,
           issuer: sec.issuer,
           duration: sec.duration,
           duration_years: duration_years,
-          grade: sec.grade,
+          rating_hub: rating_hub_value,
+          grade: sec.grade && Atom.to_string(sec.grade),
           benchmark_index: sec.benchmark_index,
           security_type: Atom.to_string(sec.security_type),
           couponRate: sec.coupon_rate && Decimal.to_float(sec.coupon_rate)
         }
       end)
 
-    # Get unique grades for y-axis
-    grades =
-      assessed
-      |> Enum.map(& &1.grade)
-      |> Enum.uniq()
-      |> Enum.sort(:desc)
-
     %{
       title: "Análise: Duration (anos) vs Rating Hub",
       series: series,
-      grades: grades,
       legend: ["CRI", "CRA", "Debêntures", "Debêntures Plus"]
     }
     |> Jason.encode!()

@@ -9,6 +9,8 @@ defmodule CreditRadar.FixedIncome.Security do
     field :issuing, :string
     field :benchmark_index, :string
     field :coupon_rate, :decimal
+    field :correction_rate, :decimal
+    field :expected_return, :decimal
     field :credit_risk, :string
     field :code, :string
     field :duration, :integer
@@ -31,6 +33,8 @@ defmodule CreditRadar.FixedIncome.Security do
       :issuing,
       :benchmark_index,
       :coupon_rate,
+      :correction_rate,
+      :expected_return,
       :code,
       :credit_risk,
       :duration,
@@ -39,6 +43,41 @@ defmodule CreditRadar.FixedIncome.Security do
       :ntnb_reference_date,
       :sync_source
     ])
-    |> validate_required([:issuer, :security_type, :series, :issuing, :code, :credit_risk, :duration])
+    |> normalize_string_fields()
+    |> validate_required([:issuer, :security_type, :series, :issuing, :code, :duration])
+    |> calculate_expected_return()
+  end
+
+  defp normalize_string_fields(changeset) do
+    # Normaliza campos de texto removendo espaços extras
+    string_fields = [:issuer, :credit_risk, :code, :series, :issuing, :benchmark_index, :ntnb_reference]
+
+    Enum.reduce(string_fields, changeset, fn field, acc ->
+      case get_change(acc, field) do
+        nil -> acc
+        value when is_binary(value) ->
+          normalized = value |> String.trim() |> String.replace(~r/\s+/, " ")
+          put_change(acc, field, normalized)
+        _ -> acc
+      end
+    end)
+  end
+
+  defp calculate_expected_return(changeset) do
+    coupon_rate = get_field(changeset, :coupon_rate)
+    correction_rate = get_field(changeset, :correction_rate)
+
+    if coupon_rate && correction_rate do
+      # Multiplica os percentuais e divide por 100
+      # Ex: 99.5638% * 95% = (99.5638 * 95) / 100 = 94.5856%
+      expected_return =
+        coupon_rate
+        |> Decimal.mult(correction_rate)
+        |> Decimal.div(100)
+
+      put_change(changeset, :expected_return, expected_return)
+    else
+      changeset
+    end
   end
 end

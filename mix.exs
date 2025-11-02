@@ -10,7 +10,8 @@ defmodule CreditRadar.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      compilers: [:phoenix_live_view] ++ Mix.compilers(),
+      compilers: Mix.compilers(),
+      consolidate_protocols: Mix.env() != :dev,
       listeners: [Phoenix.CodeReloader]
     ]
   end
@@ -67,7 +68,8 @@ defmodule CreditRadar.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:nebulex, "~> 2.6"},
-      {:backpex, "~> 0.16.0"}
+      {:backpex, "~> 0.16.0"},
+      {:nimble_csv, "~> 1.2"}
     ]
   end
 

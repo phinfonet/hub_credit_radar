@@ -33,6 +33,16 @@ defmodule CreditRadar.Integrations.Anbima.Client do
     |> Req.get(url: "/v1/cri-cra/mercado-secundario")
   end
 
+  @doc """
+  Calls `/v1/titulos-publicos/curvas-juros`.
+  Fetches interest rate curves (IPCA, DI, PRE, etc.) for a given date.
+  """
+  def fetch_interest_rate_curves(date \\ nil) do
+    params = if date, do: %{"data" => date}, else: %{}
+
+    client()
+    |> Req.get(url: "/v1/titulos-publicos/curvas-juros", params: params)
+  end
 
   defp client() do
     client_id = Keyword.fetch!(credentials(), :client_id)

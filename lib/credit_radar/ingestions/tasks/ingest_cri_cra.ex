@@ -1,5 +1,43 @@
 defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
-  @moduledoc false
+  @moduledoc """
+  Ingestion task for CRI/CRA securities from Anbima API.
+
+  ## Campos retornados pela API Anbima (Mercado Secundário CRI/CRA)
+
+  ### Campos Utilizados no Sistema
+  - `codigo_ativo` → `code` (string) - Código do ativo
+  - `data_referencia` → `reference_date` (date) - Data de referência
+  - `duration` → `duration` (decimal→integer) - Duration em dias
+  - `emissao` → `issuing` (string) - Número da emissão
+  - `emissor` → `issuer` (string) - Nome do emissor (securitizadora)
+  - `originador` → `credit_risk` (string) - Empresa originadora do crédito (risco de crédito real)
+  - `referencia_ntnb` → `ntnb_reference` (string) - Referência NTN-B
+  - `data_referencia_ntnb` → `ntnb_reference_date` (date) - Data da referência NTN-B
+  - `serie` → `series` (string) - Série do ativo
+  - `taxa_correcao` → `correction_rate` (decimal) - Taxa de correção
+  - `taxa_indicativa` → `coupon_rate` (decimal) - Taxa indicativa
+  - `tipo_contrato` → `security_type` (enum) - Tipo de contrato (CRI/CRA)
+
+  ### Campos Disponíveis mas Não Utilizados
+  - `data_vencimento` - Data de vencimento
+  - `desvio_padrao` - Desvio padrão
+  - `originador_credito` - Crédito do originador (parece duplicar `originador`)
+  - `pu_indicativo` - PU indicativo
+  - `quantidade_disponivel` - Quantidade disponível
+  - `vl_pu` - Valor PU
+  - `taxa_compra` - Taxa de compra
+  - `taxa_venda` - Taxa de venda
+  - `tipo_remuneracao` - Tipo de remuneração
+  - `data_finalizado` - Data de finalização
+  - `percent_vne` - Percentual VNE
+  - `percent_pu_par` - Percentual PU par
+  - `percent_reune` - Percentual REUNE
+  - `pu` - Preço unitário
+
+  ## Campos Calculados
+  - `benchmark_index` - Determinado com base em `referencia_ntnb` e `data_referencia_ntnb`
+  - `expected_return` - Calculado automaticamente como `coupon_rate * correction_rate`
+  """
 
   use Task, restart: :transient
 
@@ -14,7 +52,6 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
   alias Ecto.Changeset
   alias Decimal
 
-  @impl true
   def start_link(execution) do
     Task.start_link(__MODULE__, :run, [execution])
   end
@@ -25,15 +62,22 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
   def run(execution \\ %{}) do
     Logger.info("Starting CRI & CRA ingestion for execution #{execution_id(execution)}")
 
-    with {:ok, payload} <- fetch_remote_data(),
-         {:ok, operations} <- describe_operations(payload),
-         {:ok, _stats} <- persist_operations(operations) do
-      _ = report_intermediate_progress(execution, 100)
-      :ok
-    else
-      {:error, reason} = error ->
-        Logger.error("CRI/CRA ingestion failed: #{inspect(reason)}")
-        error
+    result =
+      with {:ok, payload} <- fetch_remote_data(),
+           {:ok, operations} <- describe_operations(payload),
+           {:ok, stats} <- persist_operations(operations) do
+        Logger.info("✅ CRI/CRA ingestion completed successfully: #{inspect(stats)}")
+        _ = report_intermediate_progress(execution, 100)
+        {:ok, stats}
+      else
+        {:error, reason} = error ->
+          Logger.error("❌ CRI/CRA ingestion failed: #{inspect(reason)}")
+          error
+      end
+
+    case result do
+      {:ok, _} -> :ok
+      error -> error
     end
   end
 
@@ -42,10 +86,14 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
 
   defp report_intermediate_progress(%{id: id}, progress) when is_integer(id) do
     Ingestions.report_progress(id, progress)
+  rescue
+    _ -> :ok
   end
 
   defp report_intermediate_progress(%Execution{} = execution, progress) do
     Ingestions.report_progress(execution, progress)
+  rescue
+    _ -> :ok
   end
 
   defp report_intermediate_progress(_execution, _progress), do: :ok
@@ -75,6 +123,13 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
       |> Enum.map(&map_entry/1)
       |> Enum.reject(&is_nil/1)
 
+    # Debug: mostra apenas o primeiro item mapeado como exemplo
+    if length(operations) > 0 do
+      IO.puts("\n=== Exemplo de Mapeamento (primeiro item) ===")
+      IO.inspect(List.first(operations), label: "Item mapeado", limit: :infinity, pretty: true)
+      IO.puts("Total de items mapeados: #{length(operations)}\n")
+    end
+
     {:ok, operations}
   end
 
@@ -87,28 +142,17 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
     %{
       code: fetch(entry, "codigo_ativo"),
       reference_date: parse_date(fetch(entry, "data_referencia")),
-      # data_vencimento: parse_date(fetch(entry, "data_vencimento")),
-      # desvio_padrao: decimal(fetch(entry, "desvio_padrao")),
       duration: decimal(fetch(entry, "duration")),
       issuing: fetch(entry, "emissao"),
       issuer: fetch(entry, "emissor"),
-      credit_risk: fetch(entry, "originador_credito"),
-      # percent_vne: decimal(fetch(entry, "percent_vne")),
-      # percent_pu_par: decimal(fetch(entry, "percent_pu_par")),
-      # percent_reune: decimal(fetch(entry, "percent_reune")),
-      # pu: decimal(fetch(entry, "pu")),
-      # vl_pu: decimal(fetch(entry, "vl_pu")),
+      credit_risk: fetch(entry, "originador"),
       ntnb_reference: ntnb_reference,
       ntnb_reference_date: ntnb_reference_date,
       benchmark_index: determine_benchmark_index(ntnb_reference, ntnb_reference_date),
       series: fetch(entry, "serie"),
-      # taxa_compra: decimal(fetch(entry, "taxa_compra")),
-      # taxa_correcao: decimal(fetch(entry, "taxa_correcao")),
+      correction_rate: decimal(fetch(entry, "taxa_correcao")),
       coupon_rate: decimal(fetch(entry, "taxa_indicativa")),
-      # taxa_venda: decimal(fetch(entry, "taxa_venda")),
-      # tipo_remuneracao: fetch(entry, "tipo_remuneracao"),
-      security_type: entry |> fetch("tipo_contrato") |> format_contract_type(),
-      # data_finalizado: parse_datetime(fetch(entry, "data_finalizado"))
+      security_type: entry |> fetch("tipo_contrato") |> format_contract_type()
     }
   rescue
     _ -> nil
@@ -134,7 +178,7 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
             %{acc | errors: acc.errors ++ [{:error, reason, operation}]}
         end
       end)
-
+      
     Logger.info(
       "CRI/CRA ingestion persisted #{stats.created + stats.updated} securities " <>
         "(created: #{stats.created}, updated: #{stats.updated}, skipped: #{stats.skipped}, errors: #{length(stats.errors)})"
@@ -169,6 +213,8 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
     benchmark_index = operation |> Map.get(:benchmark_index) |> normalize_string()
     ntnb_reference = operation |> Map.get(:ntnb_reference) |> normalize_string()
     ntnb_reference_date = Map.get(operation, :ntnb_reference_date)
+    coupon_rate = Map.get(operation, :coupon_rate)
+    correction_rate = Map.get(operation, :correction_rate)
 
     cond do
       is_nil(code) ->
@@ -185,9 +231,6 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
 
       is_nil(issuing) ->
         {:skip, :missing_issuing}
-
-      is_nil(credit_risk) ->
-        {:skip, :missing_credit_risk}
 
       is_nil(duration) ->
         {:skip, :missing_duration}
@@ -206,6 +249,8 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
             benchmark_index: benchmark_index,
             ntnb_reference: ntnb_reference,
             ntnb_reference_date: ntnb_reference_date,
+            coupon_rate: coupon_rate,
+            correction_rate: correction_rate,
             sync_source: :api
           }
 
@@ -298,14 +343,13 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
     end)
   end
 
+  # Simplesmente pega o valor do map, sem tentar conversões que podem perder dados
   defp fetch(entry, key) when is_binary(key) do
-    Map.get(entry, key) || Map.get(entry, String.to_existing_atom(key))
-  rescue
-    ArgumentError -> Map.get(entry, key)
+    Map.get(entry, key)
   end
 
   defp fetch(entry, key) when is_atom(key) do
-    Map.get(entry, key) || Map.get(entry, Atom.to_string(key))
+    Map.get(entry, Atom.to_string(key))
   end
 
   defp fetch(_entry, _key), do: nil

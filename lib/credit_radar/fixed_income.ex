@@ -24,22 +24,28 @@ defmodule CreditRadar.FixedIncome do
   Builds a changeset for creating an assessment.
   """
   def assessment_create_changeset(assessment, attrs, _metadata \\ []) do
-    Assessment.changeset(assessment, attrs)
+    assessment
+    |> Assessment.changeset(attrs)
+    |> calculate_rating_hub()
   end
 
   @doc """
-  Duplicates an assessment to all other securities with the same issuer and reference_date.
+  Duplicates an assessment to all other securities with the same credit_risk and reference_date.
   Called after an assessment is successfully created.
+
+  The credit_risk (originador) represents the actual credit risk entity,
+  not the issuer (securitizadora), so the assessment should be replicated
+  to all securities from the same credit risk source.
   """
   def duplicate_assessment_to_issuer(assessment) do
     assessment = Repo.preload(assessment, :security)
     security = assessment.security
 
-    if security do
-      # Buscar todos os outros securities com mesmo emissor e reference_date
+    if security && security.credit_risk do
+      # Buscar todos os outros securities com mesmo credit_risk (originador) e reference_date
       other_securities =
         Security
-        |> where([s], s.issuer == ^security.issuer)
+        |> where([s], s.credit_risk == ^security.credit_risk)
         |> where([s], s.reference_date == ^security.reference_date)
         |> where([s], s.id != ^security.id)
         |> Repo.all()
@@ -70,7 +76,9 @@ defmodule CreditRadar.FixedIncome do
   Builds a changeset for updating an assessment.
   """
   def assessment_update_changeset(assessment, attrs, _metadata \\ []) do
-    Assessment.changeset(assessment, attrs)
+    assessment
+    |> Assessment.changeset(attrs)
+    |> calculate_rating_hub()
   end
 
   @doc """
@@ -79,7 +87,7 @@ defmodule CreditRadar.FixedIncome do
   """
   def list_securities_with_assessments(filters \\ %{}) do
     Security
-    |> join(:left, [s], a in assoc(s, :assessment))
+    |> join(:inner, [s], a in assoc(s, :assessment))
     |> apply_analysis_filters(filters)
     |> select([s, a], %{
       id: s.id,
@@ -90,6 +98,8 @@ defmodule CreditRadar.FixedIncome do
       issuing: s.issuing,
       benchmark_index: s.benchmark_index,
       coupon_rate: s.coupon_rate,
+      correction_rate: s.correction_rate,
+      expected_return: s.expected_return,
       credit_risk: s.credit_risk,
       duration: s.duration,
       reference_date: s.reference_date,
@@ -102,7 +112,8 @@ defmodule CreditRadar.FixedIncome do
       solvency_ratio: a.solvency_ratio,
       credit_spread: a.credit_spread,
       grade: a.grade,
-      recommendation: a.recommendation
+      recommendation: a.recommendation,
+      rating_hub: a.rating_hub
     })
     |> order_by([s, a], [asc: s.issuer, asc: s.code])
     |> Repo.all()
@@ -137,6 +148,8 @@ defmodule CreditRadar.FixedIncome do
     query
     |> filter_by_security_type(filters)
     |> filter_by_benchmark_index(filters)
+    |> filter_by_grade(filters)
+    |> filter_by_recommendation(filters)
     |> filter_by_issuer(filters)
   end
 
@@ -172,6 +185,12 @@ defmodule CreditRadar.FixedIncome do
   end
 
   defp filter_by_grade(query, _), do: query
+
+  defp filter_by_recommendation(query, %{recommendation: recommendation}) when not is_nil(recommendation) do
+    where(query, [s, a], a.recommendation == ^recommendation)
+  end
+
+  defp filter_by_recommendation(query, _), do: query
 
   defp filter_by_issuer(query, %{issuers: issuers}) when is_list(issuers) and length(issuers) > 0 do
     where(query, [s], s.issuer in ^issuers)
@@ -217,5 +236,40 @@ defmodule CreditRadar.FixedIncome do
     |> where([a], not is_nil(a.grade))
     |> order_by([a], desc: a.grade)
     |> Repo.all()
+  end
+
+  # Calcula o Rating Hub automaticamente
+  # Rating Hub = expected_return * média(issuer_quality, capital_structure, solvency_ratio, credit_spread)
+  defp calculate_rating_hub(changeset) do
+    security_id = Ecto.Changeset.get_field(changeset, :security_id)
+    issuer_quality = Ecto.Changeset.get_field(changeset, :issuer_quality)
+    capital_structure = Ecto.Changeset.get_field(changeset, :capital_structure)
+    solvency_ratio = Ecto.Changeset.get_field(changeset, :solvency_ratio)
+    credit_spread = Ecto.Changeset.get_field(changeset, :credit_spread)
+
+    # Só calcula se tiver todos os valores necessários
+    if security_id && issuer_quality && capital_structure && solvency_ratio && credit_spread do
+      security = Repo.get(Security, security_id)
+
+      if security && security.expected_return do
+        # Média dos 4 campos
+        avg = Decimal.div(
+          Decimal.add(
+            Decimal.add(Decimal.new(issuer_quality), Decimal.new(capital_structure)),
+            Decimal.add(Decimal.new(solvency_ratio), Decimal.new(credit_spread))
+          ),
+          Decimal.new(4)
+        )
+
+        # Rating Hub = expected_return * avg
+        rating_hub = Decimal.mult(security.expected_return, avg)
+
+        Ecto.Changeset.put_change(changeset, :rating_hub, rating_hub)
+      else
+        changeset
+      end
+    else
+      changeset
+    end
   end
 end

@@ -104,3 +104,54 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* Tom Select Styles */
+@import "tom-select/dist/css/tom-select.default.css";
+
+/* Tom Select Dark Theme Customization */
+.ts-wrapper.single .ts-control,
+.ts-wrapper.multi .ts-control {
+  background-color: #111827;
+  border-color: #4b5563;
+  color: #e5e7eb;
+}
+
+.ts-dropdown {
+  background-color: #1f2937;
+  border-color: #4b5563;
+  color: #e5e7eb;
+}
+
+.ts-dropdown .option:hover,
+.ts-dropdown .option.active {
+  background-color: #374151;
+  color: #0adc7d;
+}
+
+.ts-dropdown .option.selected {
+  background-color: #14b8a6;
+  color: #ffffff;
+}
+
+.ts-control input {
+  color: #e5e7eb;
+}
+
+.ts-control input::placeholder {
+  color: #9ca3af;
+}
+
+.ts-wrapper.multi .ts-control > div {
+  background-color: #14b8a6;
+  border-color: #0d9488;
+  color: #ffffff;
+}
+
+.ts-wrapper.plugin-remove_button .ts-control [data-value] .remove {
+  border-left-color: #0d9488;
+}
+
+.ts-wrapper.plugin-remove_button .ts-control [data-value] .remove:hover {
+  background-color: #ef4444;
+  border-left-color: #dc2626;
+}

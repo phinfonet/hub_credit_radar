@@ -121,6 +121,16 @@ defmodule CreditRadar.Ingestions do
   end
 
   defp run_execution(module, %Execution{} = execution) do
+    Logger.info("🚀 Starting execution for module: #{inspect(module)}")
+
+    # Ensure module is loaded
+    case Code.ensure_loaded(module) do
+      {:module, ^module} ->
+        Logger.info("✓ Module #{inspect(module)} loaded successfully")
+      {:error, reason} ->
+        Logger.error("✗ Failed to load module #{inspect(module)}: #{inspect(reason)}")
+    end
+
     {:ok, execution} =
       execution
       |> execution_update_changeset(%{
@@ -130,24 +140,41 @@ defmodule CreditRadar.Ingestions do
       })
       |> Repo.update()
 
+    Logger.info("✓ Execution marked as running, now calling module.run()")
+
+    # Debug: show all exported functions
+    Logger.debug("Available functions: #{inspect(module.__info__(:functions))}")
+
     result =
       try do
         cond do
-          function_exported?(module, :run, 1) -> module.run(execution)
-          function_exported?(module, :run, 0) -> module.run()
-          true -> {:error, :not_implemented}
+          function_exported?(module, :run, 1) ->
+            Logger.info("→ Calling #{inspect(module)}.run/1 with execution")
+            module.run(execution)
+          function_exported?(module, :run, 0) ->
+            Logger.info("→ Calling #{inspect(module)}.run/0")
+            module.run()
+          true ->
+            Logger.error("✗ Module #{inspect(module)} does not export run/1 or run/0")
+            Logger.error("✗ Exported functions: #{inspect(module.__info__(:functions))}")
+            {:error, :not_implemented}
         end
       rescue
         exception ->
+          Logger.error("💥 EXCEPTION in ingestion: #{inspect(exception)}")
           log_exception(exception, __STACKTRACE__)
           {:error, exception}
       catch
         kind, value ->
-          Logger.error("Ingestion task crashed: #{inspect({kind, value})}")
+          Logger.error("💥 CRASH in ingestion: #{inspect({kind, value})}")
           {:error, {kind, value}}
       end
 
+    Logger.info("📊 Ingestion result: #{inspect(result)}")
+
     status = finalize_status(result)
+    Logger.info("📌 Final status: #{status}")
+
     latest_execution = Repo.get!(Execution, execution.id)
 
     final_progress =

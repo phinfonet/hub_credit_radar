@@ -1,4 +1,5 @@
 import * as echarts from 'echarts';
+import TomSelect from 'tom-select';
 
 /**
  * ECharts Hook for Phoenix LiveView
@@ -74,7 +75,8 @@ export const EChartsHook = {
               <strong style="color: #0ADC7D;">${item.issuer}</strong><br/>
               <strong>Código:</strong> ${item.code}<br/>
               <strong>Duration:</strong> ${item.duration_years} anos (${item.duration} dias)<br/>
-              <strong>Rating Hub:</strong> ${item.grade || 'N/A'}<br/>
+              <strong>Rating Hub:</strong> ${item.rating_hub ? item.rating_hub.toFixed(2) : 'N/A'}<br/>
+              <strong>Grade:</strong> ${item.grade ? item.grade.toUpperCase() : 'N/A'}<br/>
               <strong>Benchmark:</strong> ${item.benchmark_index || 'N/A'}<br/>
               <strong>Tipo:</strong> ${item.security_type}<br/>
             </div>
@@ -115,26 +117,29 @@ export const EChartsHook = {
         }
       },
       yAxis: {
-        type: 'category',
+        type: 'value',
         name: 'Rating Hub',
         nameLocation: 'middle',
-        nameGap: 60,
+        nameGap: 50,
         nameTextStyle: {
           color: '#9CA3AF',
           fontSize: 14,
           fontWeight: 'bold'
         },
-        data: data.grades || ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'CCC', 'CC', 'C', 'D'],
         axisLine: {
           lineStyle: {
             color: '#374151'
           }
         },
         axisLabel: {
-          color: '#9CA3AF'
+          color: '#9CA3AF',
+          formatter: (value) => value.toFixed(2)
         },
         splitLine: {
-          show: false
+          lineStyle: {
+            color: '#1F2937',
+            type: 'dashed'
+          }
         }
       },
       series: [{
@@ -192,6 +197,56 @@ export const EChartsHook = {
   }
 };
 
+/**
+ * TomSelect Hook for Phoenix LiveView
+ *
+ * Enhances multi-select dropdowns with search, tagging, and better UX.
+ * Works seamlessly with LiveView forms.
+ */
+export const TomSelectHook = {
+  mounted() {
+    const selectElement = this.el.querySelector('select');
+    if (!selectElement) return;
+
+    this.select = new TomSelect(selectElement, {
+      plugins: ['remove_button', 'clear_button'],
+      maxOptions: null,
+      placeholder: 'Selecione emissores...',
+      allowEmptyOption: true,
+      closeAfterSelect: false,
+      hidePlaceholder: false,
+      render: {
+        no_results: function(data, escape) {
+          return '<div class="no-results">Nenhum resultado encontrado para "' + escape(data.input) + '"</div>';
+        },
+      }
+    });
+
+    // Preserve selected values on LiveView updates
+    this.handleEvent("preserve-selection", () => {
+      if (this.select) {
+        this.selectedValues = this.select.getValue();
+      }
+    });
+  },
+
+  updated() {
+    // Restore selection after LiveView update
+    if (this.select && this.selectedValues) {
+      this.select.setValue(this.selectedValues, true);
+      this.selectedValues = null;
+    }
+  },
+
+  destroyed() {
+    if (this.select) {
+      this.select.destroy();
+      this.select = null;
+    }
+  }
+};
+
 export default {
-  ECharts: EChartsHook
+  ECharts: EChartsHook,
+  TomSelect: TomSelectHook
 };
