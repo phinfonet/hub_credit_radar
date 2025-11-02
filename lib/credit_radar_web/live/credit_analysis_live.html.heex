@@ -94,12 +94,35 @@
             </select>
           </div>
 
+          <!-- Credit Risk Filter (Tom Select) -->
+          <div class="lg:col-span-2">
+            <label class="block text-sm font-medium text-gray-300 mb-2">
+              Riscos de Crédito (Originadores)
+            </label>
+            <div phx-hook="TomSelect" id="credit-risk-select-wrapper" phx-update="ignore">
+              <select
+                name="credit_risks[]"
+                multiple
+                class="w-full"
+              >
+                <%= for credit_risk <- @credit_risks do %>
+                  <option
+                    value={credit_risk}
+                    selected={@filters[:credit_risks] && credit_risk in @filters[:credit_risks]}
+                  >
+                    <%= credit_risk %>
+                  </option>
+                <% end %>
+              </select>
+            </div>
+          </div>
+
           <!-- Issuer Filter (Tom Select) -->
           <div class="lg:col-span-2">
             <label class="block text-sm font-medium text-gray-300 mb-2">
-              Emissores
+              Emissores (Securitizadoras)
             </label>
-            <div phx-hook="TomSelect" id="issuer-select-wrapper">
+            <div phx-hook="TomSelect" id="issuer-select-wrapper" phx-update="ignore">
               <select
                 name="issuers[]"
                 multiple
@@ -207,19 +230,54 @@
                   class="w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500 cursor-pointer"
                 />
               </th>
-              <th class="px-4 py-3 text-left">Código</th>
-              <th class="px-4 py-3 text-left">Emissor</th>
-              <th class="px-4 py-3 text-left">Tipo</th>
-              <th class="px-4 py-3 text-left">Benchmark</th>
-              <th class="px-4 py-3 text-right">Duration (anos)</th>
-              <th class="px-4 py-3 text-right">Taxa Indicativa</th>
-              <th class="px-4 py-3 text-right">Taxa Correção</th>
-              <th class="px-4 py-3 text-right">Retorno Esperado</th>
-              <th class="px-4 py-3 text-left">Grade</th>
-              <th class="px-4 py-3 text-right">Rating Hub</th>
-              <th class="px-4 py-3 text-right">Solvency</th>
-              <th class="px-4 py-3 text-right">Spread</th>
-              <th class="px-4 py-3 text-left">Recomendação</th>
+              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="code">
+                Código<%= sort_icon(assigns, :code) %>
+              </th>
+              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="credit_risk">
+                Risco de Crédito<%= sort_icon(assigns, :credit_risk) %>
+              </th>
+              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="issuer">
+                Emissor<%= sort_icon(assigns, :issuer) %>
+              </th>
+              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="security_type">
+                Tipo<%= sort_icon(assigns, :security_type) %>
+              </th>
+              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="benchmark_index">
+                Benchmark<%= sort_icon(assigns, :benchmark_index) %>
+              </th>
+              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="duration">
+                Duration (anos)<%= sort_icon(assigns, :duration) %>
+              </th>
+              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="coupon_rate">
+                Taxa Indicativa<%= sort_icon(assigns, :coupon_rate) %>
+              </th>
+              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="correction_rate">
+                Taxa Correção<%= sort_icon(assigns, :correction_rate) %>
+              </th>
+              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="expected_return">
+                Retorno Esperado<%= sort_icon(assigns, :expected_return) %>
+              </th>
+              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="issuer_quality">
+                Qualidade do Emissor<%= sort_icon(assigns, :issuer_quality) %>
+              </th>
+              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="capital_structure">
+                Estrutura de Capital<%= sort_icon(assigns, :capital_structure) %>
+              </th>
+              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="grade">
+                Grade<%= sort_icon(assigns, :grade) %>
+              </th>
+              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="rating_hub">
+                Rating Hub<%= sort_icon(assigns, :rating_hub) %>
+              </th>
+              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="solvency_ratio">
+                Solvência<%= sort_icon(assigns, :solvency_ratio) %>
+              </th>
+              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="credit_spread">
+                Prêmio de Risco<%= sort_icon(assigns, :credit_spread) %>
+              </th>
+              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="recommendation">
+                Recomendação<%= sort_icon(assigns, :recommendation) %>
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-700">
@@ -236,6 +294,9 @@
                 </td>
                 <td class="px-4 py-3 font-mono text-sm text-teal-400">
                   <%= security.code %>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-200 font-medium">
+                  <%= security.credit_risk || "-" %>
                 </td>
                 <td class="px-4 py-3 text-sm text-gray-200">
                   <%= security.issuer %>
@@ -260,6 +321,24 @@
                 <td class="px-4 py-3 text-sm text-right text-gray-200 font-semibold">
                   <%= format_decimal(security.expected_return) %>%
                 </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-200">
+                  <%= if security.issuer_quality do %>
+                    <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.issuer_quality)}"}>
+                      <%= security.issuer_quality %>
+                    </span>
+                  <% else %>
+                    <span class="text-gray-500 text-xs">-</span>
+                  <% end %>
+                </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-200">
+                  <%= if security.capital_structure do %>
+                    <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.capital_structure)}"}>
+                      <%= security.capital_structure %>
+                    </span>
+                  <% else %>
+                    <span class="text-gray-500 text-xs">-</span>
+                  <% end %>
+                </td>
                 <td class="px-4 py-3 text-sm">
                   <%= if security.grade do %>
                     <span class="px-2 py-1 rounded-full text-xs font-bold bg-gray-700 text-gray-200">
@@ -279,10 +358,22 @@
                   <% end %>
                 </td>
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
-                  <%= format_decimal(security.solvency_ratio) %>
+                  <%= if security.solvency_ratio do %>
+                    <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.solvency_ratio)}"}>
+                      <%= security.solvency_ratio %>
+                    </span>
+                  <% else %>
+                    <span class="text-gray-500 text-xs">-</span>
+                  <% end %>
                 </td>
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
-                  <%= format_decimal(security.credit_spread) %>
+                  <%= if security.credit_spread do %>
+                    <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.credit_spread)}"}>
+                      <%= security.credit_spread %>
+                    </span>
+                  <% else %>
+                    <span class="text-gray-500 text-xs">-</span>
+                  <% end %>
                 </td>
                 <td class="px-4 py-3 text-sm">
                   <%= case security.recommendation do %>
@@ -299,7 +390,7 @@
 
             <%= if Enum.empty?(@securities) do %>
               <tr>
-                <td colspan="14" class="px-4 py-12 text-center text-gray-400">
+                <td colspan="17" class="px-4 py-12 text-center text-gray-400">
                   <div class="flex flex-col items-center gap-2">
                     <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />

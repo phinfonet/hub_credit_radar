@@ -189,6 +189,7 @@ defmodule CreditRadar.FixedIncome do
     |> filter_by_grade(filters)
     |> filter_by_recommendation(filters)
     |> filter_by_issuer(filters)
+    |> filter_by_credit_risk(filters)
   end
 
   defp filter_by_security_type(query, %{security_type: type}) when not is_nil(type) do
@@ -240,6 +241,16 @@ defmodule CreditRadar.FixedIncome do
 
   defp filter_by_issuer(query, _), do: query
 
+  defp filter_by_credit_risk(query, %{credit_risks: credit_risks}) when is_list(credit_risks) and length(credit_risks) > 0 do
+    where(query, [s], s.credit_risk in ^credit_risks)
+  end
+
+  defp filter_by_credit_risk(query, %{credit_risk: credit_risk}) when not is_nil(credit_risk) and credit_risk != "" do
+    where(query, [s], s.credit_risk == ^credit_risk)
+  end
+
+  defp filter_by_credit_risk(query, _), do: query
+
   @doc """
   Returns a list of unique issuers (emissores) from all securities.
   """
@@ -249,6 +260,18 @@ defmodule CreditRadar.FixedIncome do
     |> distinct(true)
     |> where([s], not is_nil(s.issuer))
     |> order_by([s], asc: s.issuer)
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns a list of unique credit risks (originadores) from all securities.
+  """
+  def list_unique_credit_risks do
+    Security
+    |> select([s], s.credit_risk)
+    |> distinct(true)
+    |> where([s], not is_nil(s.credit_risk))
+    |> order_by([s], asc: s.credit_risk)
     |> Repo.all()
   end
 

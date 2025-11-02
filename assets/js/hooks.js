@@ -205,13 +205,36 @@ export const EChartsHook = {
  */
 export const TomSelectHook = {
   mounted() {
+    this.initSelect();
+  },
+
+  updated() {
+    // Reinitialize if select was destroyed
+    if (!this.select) {
+      this.initSelect();
+    }
+  },
+
+  initSelect() {
     const selectElement = this.el.querySelector('select');
     if (!selectElement) return;
+
+    // Destroy existing instance if any
+    if (this.select) {
+      try {
+        this.select.destroy();
+      } catch (e) {
+        console.warn('Error destroying TomSelect:', e);
+      }
+    }
+
+    // Get current values before initialization
+    const currentValues = Array.from(selectElement.selectedOptions).map(opt => opt.value);
 
     this.select = new TomSelect(selectElement, {
       plugins: ['remove_button', 'clear_button'],
       maxOptions: null,
-      placeholder: 'Selecione emissores...',
+      placeholder: 'Selecione...',
       allowEmptyOption: true,
       closeAfterSelect: false,
       hidePlaceholder: false,
@@ -219,28 +242,23 @@ export const TomSelectHook = {
         no_results: function(data, escape) {
           return '<div class="no-results">Nenhum resultado encontrado para "' + escape(data.input) + '"</div>';
         },
+      },
+      onInitialize: function() {
+        // Restore selected values after initialization
+        if (currentValues.length > 0) {
+          this.setValue(currentValues, true);
+        }
       }
     });
-
-    // Preserve selected values on LiveView updates
-    this.handleEvent("preserve-selection", () => {
-      if (this.select) {
-        this.selectedValues = this.select.getValue();
-      }
-    });
-  },
-
-  updated() {
-    // Restore selection after LiveView update
-    if (this.select && this.selectedValues) {
-      this.select.setValue(this.selectedValues, true);
-      this.selectedValues = null;
-    }
   },
 
   destroyed() {
     if (this.select) {
-      this.select.destroy();
+      try {
+        this.select.destroy();
+      } catch (e) {
+        console.warn('Error destroying TomSelect:', e);
+      }
       this.select = null;
     }
   }

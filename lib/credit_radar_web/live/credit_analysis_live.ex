@@ -12,7 +12,10 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
       |> assign(:securities, [])
       |> assign(:selected_securities, MapSet.new())
       |> assign(:issuers, FixedIncome.list_unique_issuers())
+      |> assign(:credit_risks, FixedIncome.list_unique_credit_risks())
       |> assign(:benchmark_indexes, FixedIncome.list_unique_benchmark_indexes())
+      |> assign(:sort_by, :code)
+      |> assign(:sort_order, :asc)
       |> load_securities()
 
     {:ok, socket}
@@ -72,12 +75,66 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
     {:noreply, assign(socket, :selected_securities, MapSet.new())}
   end
 
+  @impl true
+  def handle_event("sort", %{"field" => field}, socket) do
+    field_atom = String.to_existing_atom(field)
+    current_sort = socket.assigns.sort_by
+    current_order = socket.assigns.sort_order
+
+    # Toggle order if clicking same field, otherwise default to asc
+    new_order =
+      if field_atom == current_sort do
+        if current_order == :asc, do: :desc, else: :asc
+      else
+        :asc
+      end
+
+    socket =
+      socket
+      |> assign(:sort_by, field_atom)
+      |> assign(:sort_order, new_order)
+      |> load_securities()
+
+    {:noreply, socket}
+  end
+
   defp load_securities(socket) do
     filters = socket.assigns.filters
-    securities = FixedIncome.list_securities_with_assessments(filters)
+    securities =
+      FixedIncome.list_securities_with_assessments(filters)
+      |> sort_securities(socket.assigns.sort_by, socket.assigns.sort_order)
 
     assign(socket, :securities, securities)
   end
+
+  defp sort_securities(securities, field, order) do
+    sorted = Enum.sort_by(securities, &sort_value(&1, field), order)
+    if order == :desc, do: sorted, else: sorted
+  end
+
+  # Get sortable value from security map
+  defp sort_value(security, :code), do: security.code || ""
+  defp sort_value(security, :credit_risk), do: security.credit_risk || ""
+  defp sort_value(security, :issuer), do: security.issuer || ""
+  defp sort_value(security, :security_type), do: Atom.to_string(security.security_type)
+  defp sort_value(security, :benchmark_index), do: security.benchmark_index || ""
+  defp sort_value(security, :duration), do: security.duration || 0
+  defp sort_value(security, :coupon_rate), do: decimal_to_float(security.coupon_rate)
+  defp sort_value(security, :correction_rate), do: decimal_to_float(security.correction_rate)
+  defp sort_value(security, :expected_return), do: decimal_to_float(security.expected_return)
+  defp sort_value(security, :issuer_quality), do: security.issuer_quality || 0
+  defp sort_value(security, :capital_structure), do: security.capital_structure || 0
+  defp sort_value(security, :grade), do: security.grade && Atom.to_string(security.grade) || "zzz"
+  defp sort_value(security, :rating_hub), do: decimal_to_float(security.rating_hub)
+  defp sort_value(security, :solvency_ratio), do: security.solvency_ratio || 0
+  defp sort_value(security, :credit_spread), do: security.credit_spread || 0
+  defp sort_value(security, :recommendation), do: security.recommendation && Atom.to_string(security.recommendation) || "zzz"
+  defp sort_value(_, _), do: 0
+
+  defp decimal_to_float(nil), do: 0.0
+  defp decimal_to_float(%Decimal{} = d), do: Decimal.to_float(d)
+  defp decimal_to_float(val) when is_number(val), do: val / 1.0
+  defp decimal_to_float(_), do: 0.0
 
   defp parse_filters(params) do
     %{}
@@ -86,6 +143,7 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
     |> put_atom_filter(:grade, params["grade"])
     |> put_atom_filter(:recommendation, params["recommendation"])
     |> put_issuers_filter(params["issuers"])
+    |> put_credit_risks_filter(params["credit_risks"])
   end
 
   defp put_string_filter(filters, _key, nil), do: filters
@@ -125,6 +183,21 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
   end
 
   defp put_issuers_filter(filters, _), do: filters
+
+  defp put_credit_risks_filter(filters, nil), do: filters
+  defp put_credit_risks_filter(filters, []), do: filters
+
+  defp put_credit_risks_filter(filters, credit_risks) when is_list(credit_risks) do
+    cleaned = Enum.reject(credit_risks, &(&1 == "" or is_nil(&1)))
+
+    if Enum.empty?(cleaned) do
+      filters
+    else
+      Map.put(filters, :credit_risks, cleaned)
+    end
+  end
+
+  defp put_credit_risks_filter(filters, _), do: filters
 
   defp parse_integer(value) when is_binary(value) do
     case Integer.parse(value) do
@@ -202,4 +275,40 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
   defp format_date(nil), do: "-"
   defp format_date(%Date{} = date), do: Calendar.strftime(date, "%d/%m/%Y")
   defp format_date(_), do: "-"
+
+  # Helper to render sort icon
+  defp sort_icon(assigns, field) do
+    current_field = assigns[:sort_by]
+    current_order = assigns[:sort_order]
+
+    cond do
+      current_field == field && current_order == :asc ->
+        ~H"""
+        <svg class="w-4 h-4 inline-block ml-1 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+        </svg>
+        """
+      current_field == field && current_order == :desc ->
+        ~H"""
+        <svg class="w-4 h-4 inline-block ml-1 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+        """
+      true ->
+        ~H"""
+        <svg class="w-4 h-4 inline-block ml-1 text-gray-600 opacity-0 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+        </svg>
+        """
+    end
+  end
+
+  # Helper to get color classes based on rating value (1-5)
+  # 1 = vermelho, 2 = laranja, 3 = amarelo, 4 = verde claro, 5 = verde
+  defp rating_color_class(1), do: "bg-red-500/20 text-red-400 ring-1 ring-red-500/30"
+  defp rating_color_class(2), do: "bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30"
+  defp rating_color_class(3), do: "bg-yellow-500/20 text-yellow-400 ring-1 ring-yellow-500/30"
+  defp rating_color_class(4), do: "bg-lime-500/20 text-lime-400 ring-1 ring-lime-500/30"
+  defp rating_color_class(5), do: "bg-green-500/20 text-green-400 ring-1 ring-green-500/30"
+  defp rating_color_class(_), do: "bg-gray-700 text-gray-400"
 end
