@@ -38,7 +38,7 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive do
       security: %{
         module: Backpex.Fields.BelongsTo,
         label: "Risco de Crédito",
-        display_field: :issuer,
+        display_field: :credit_risk,
         live_resource: FixedIncomeSecurityLive,
         options_query: &__MODULE__.unique_securities_for_select/2
       },
