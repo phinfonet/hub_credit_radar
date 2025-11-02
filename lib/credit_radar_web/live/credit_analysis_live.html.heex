@@ -36,7 +36,7 @@
       </h2>
 
       <form phx-submit="apply_filters">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <!-- Security Type Filter -->
           <div>
             <label class="block text-sm font-medium text-gray-300 mb-2">Tipo de Ativo</label>
@@ -234,10 +234,7 @@
                 Código<%= sort_icon(assigns, :code) %>
               </th>
               <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="credit_risk">
-                Risco de Crédito<%= sort_icon(assigns, :credit_risk) %>
-              </th>
-              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="issuer">
-                Emissor<%= sort_icon(assigns, :issuer) %>
+                Risco de Crédito / Emissor<%= sort_icon(assigns, :credit_risk) %>
               </th>
               <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="security_type">
                 Tipo<%= sort_icon(assigns, :security_type) %>
@@ -295,11 +292,15 @@
                 <td class="px-4 py-3 font-mono text-sm text-teal-400">
                   <%= security.code %>
                 </td>
-                <td class="px-4 py-3 text-sm text-gray-200 font-medium">
-                  <%= security.credit_risk || "-" %>
-                </td>
-                <td class="px-4 py-3 text-sm text-gray-200">
-                  <%= security.issuer %>
+                <td class="px-4 py-3 text-sm">
+                  <div class="flex flex-col gap-0.5">
+                    <span class="text-gray-200 font-semibold">
+                      <%= security.credit_risk || "-" %>
+                    </span>
+                    <span class="text-gray-400 text-xs">
+                      <%= security.issuer %>
+                    </span>
+                  </div>
                 </td>
                 <td class="px-4 py-3 text-sm">
                   <span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-200">
@@ -341,8 +342,8 @@
                 </td>
                 <td class="px-4 py-3 text-sm">
                   <%= if security.grade do %>
-                    <span class="px-2 py-1 rounded-full text-xs font-bold bg-gray-700 text-gray-200">
-                      <%= String.upcase(to_string(security.grade)) %>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-700 text-gray-200 uppercase">
+                      <%= to_string(security.grade) %>
                     </span>
                   <% else %>
                     <span class="text-gray-500 text-xs">-</span>
@@ -378,9 +379,9 @@
                 <td class="px-4 py-3 text-sm">
                   <%= case security.recommendation do %>
                     <% :enter -> %>
-                      <span class="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">Entrar</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-500/20 text-green-400 ring-1 ring-green-500/30">Entrar</span>
                     <% :not_enter -> %>
-                      <span class="px-2 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400">Não Entrar</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/20 text-red-400 ring-1 ring-red-500/30">Não Entrar</span>
                     <% _ -> %>
                       <span class="text-gray-500 text-xs">-</span>
                   <% end %>
@@ -390,7 +391,7 @@
 
             <%= if Enum.empty?(@securities) do %>
               <tr>
-                <td colspan="17" class="px-4 py-12 text-center text-gray-400">
+                <td colspan="16" class="px-4 py-12 text-center text-gray-400">
                   <div class="flex flex-col items-center gap-2">
                     <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
