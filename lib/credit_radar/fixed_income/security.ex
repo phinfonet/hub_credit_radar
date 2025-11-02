@@ -53,12 +53,23 @@ defmodule CreditRadar.FixedIncome.Security do
     string_fields = [:issuer, :credit_risk, :code, :series, :issuing, :benchmark_index, :ntnb_reference]
 
     Enum.reduce(string_fields, changeset, fn field, acc ->
-      case get_change(acc, field) do
-        nil -> acc
+      # Pega o valor atual (change ou field existente)
+      value = get_field(acc, field)
+
+      case value do
+        nil ->
+          acc
         value when is_binary(value) ->
+          # Remove espaços no início/fim e múltiplos espaços internos
           normalized = value |> String.trim() |> String.replace(~r/\s+/, " ")
-          put_change(acc, field, normalized)
-        _ -> acc
+          # Só atualiza se o valor mudou
+          if normalized != value do
+            put_change(acc, field, normalized)
+          else
+            acc
+          end
+        _ ->
+          acc
       end
     end)
   end

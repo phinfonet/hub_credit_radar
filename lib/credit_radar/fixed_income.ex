@@ -73,6 +73,44 @@ defmodule CreditRadar.FixedIncome do
   end
 
   @doc """
+  Updates all assessments for securities with the same credit_risk and reference_date.
+  Called after an assessment is edited to propagate changes to all related securities.
+  """
+  def update_assessments_by_credit_risk(assessment) do
+    assessment = Repo.preload(assessment, :security)
+    security = assessment.security
+
+    if security && security.credit_risk do
+      # Buscar todos os outros securities com mesmo credit_risk (originador) e reference_date
+      other_security_ids =
+        Security
+        |> where([s], s.credit_risk == ^security.credit_risk)
+        |> where([s], s.reference_date == ^security.reference_date)
+        |> where([s], s.id != ^security.id)
+        |> select([s], s.id)
+        |> Repo.all()
+
+      # Atualizar todos os assessments existentes desses securities
+      Assessment
+      |> where([a], a.security_id in ^other_security_ids)
+      |> Repo.update_all(
+        set: [
+          issuer_quality: assessment.issuer_quality,
+          capital_structure: assessment.capital_structure,
+          solvency_ratio: assessment.solvency_ratio,
+          credit_spread: assessment.credit_spread,
+          grade: assessment.grade,
+          recommendation: assessment.recommendation,
+          rating_hub: assessment.rating_hub,
+          updated_at: DateTime.utc_now()
+        ]
+      )
+    end
+
+    {:ok, assessment}
+  end
+
+  @doc """
   Builds a changeset for updating an assessment.
   """
   def assessment_update_changeset(assessment, attrs, _metadata \\ []) do

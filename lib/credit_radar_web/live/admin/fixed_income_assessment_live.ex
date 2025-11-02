@@ -77,8 +77,15 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive do
 
   @impl Backpex.LiveResource
   def on_item_created(socket, assessment) do
-    # Duplicar o assessment para todos os securities do mesmo emissor e reference_date
+    # Duplicar o assessment para todos os securities do mesmo credit_risk e reference_date
     FixedIncome.duplicate_assessment_to_issuer(assessment)
+    socket
+  end
+
+  @impl Backpex.LiveResource
+  def on_item_updated(socket, assessment) do
+    # Quando edita um assessment, atualiza todos os outros do mesmo credit_risk
+    FixedIncome.update_assessments_by_credit_risk(assessment)
     socket
   end
 
