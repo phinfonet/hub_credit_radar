@@ -5,10 +5,11 @@ echo "Pulling latest code..."
 git pull origin main
 
 echo "Installing deps..."
-mix deps.get --only prod
+mix deps.get
 
 echo "Building assets..."
 mix assets.deploy
+mix deps.clean --only dev
 
 echo "Building release..."
 MIX_ENV=prod mix release --overwrite
