@@ -58,12 +58,20 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  ssl_opts_for = fn url ->
+    if Code.ensure_loaded?(AwsRdsCAStore) do
+      AwsRdsCAStore.ssl_opts(url)
+    else
+      []
+    end
+  end
+
   config :credit_radar, CreditRadar.Repo,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     socket_options: maybe_ipv6,
     ssl: true,
-    ssl_opts: AwsRdsCastore.ssl_opts(database_url)
+    ssl_opts: ssl_opts_for.(database_url)
 
   # Hub Backend (Rails) database - Read-only for admin authentication
   hub_database_url =
@@ -78,7 +86,7 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("HUB_POOL_SIZE") || "2"),
     socket_options: maybe_ipv6,
     ssl: true,
-    ssl_opts: AwsRdsCastore.ssl_opts(hub_database_url)
+    ssl_opts: ssl_opts_for.(hub_database_url)
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
