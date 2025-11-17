@@ -10,6 +10,7 @@ defmodule CreditRadar.Application do
     children = [
       CreditRadarWeb.Telemetry,
       CreditRadar.Repo,
+      CreditRadar.HubRepo,
       CreditRadar.Cache,
       {CreditRadar.Ingestions.TaskSupervisor, name: CreditRadar.Ingestions.TaskSupervisor},
       {DNSCluster, query: Application.get_env(:credit_radar, :dns_cluster_query) || :ignore},
