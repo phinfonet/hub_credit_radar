@@ -3,6 +3,7 @@ defmodule CreditRadar.Auth do
   Handles authentication against the external GraphQL API.
   """
 
+  require Logger
   alias CreditRadar.GraphQL.Client
 
   @token_path "/oauth/token"
@@ -37,7 +38,9 @@ defmodule CreditRadar.Auth do
   end
 
   defp fetch_me(token) do
-    Client.query(@me_query, %{}, token: token)
+    result = Client.query(@me_query, %{}, token: token)
+    log_graphql_response(:me, result)
+    result
   end
 
   defp fetch_token(email, password) do
@@ -58,13 +61,19 @@ defmodule CreditRadar.Auth do
     body = [
       grant_type: "password",
       email: email,
+      username: email,
       password: password,
       client_id: client_id,
       client_secret: client_secret
     ]
 
-    case Req.post(url: String.trim_trailing(url, "/") <> @token_path, form: body) do
-      {:ok, %Req.Response{status: status, body: %{"access_token" => token}}} when status in 200..299 ->
+    response = Req.post(url: String.trim_trailing(url, "/") <> @token_path, form: body)
+
+    log_http_response(:token, response)
+
+    case response do
+      {:ok, %Req.Response{status: status, body: %{"access_token" => token}}}
+      when status in 200..299 ->
         {:ok, token}
 
       {:ok, %Req.Response{body: %{"error_description" => message}}} ->
@@ -86,4 +95,27 @@ defmodule CreditRadar.Auth do
   end
 
   defp ensure_active_user(_), do: {:inactive, "Usuário não confirmado"}
+
+  defp log_http_response(step, {:ok, %Req.Response{} = resp}) do
+    Logger.info("""
+    [Auth] #{step} response
+    status=#{resp.status}
+    body=#{inspect(resp.body)}
+    """)
+  end
+
+  defp log_http_response(step, {:error, reason}) do
+    Logger.error("[Auth] #{step} request failed: #{inspect(reason)}")
+  end
+
+  defp log_graphql_response(step, {:ok, body}) do
+    Logger.info("""
+    [Auth] #{step} GraphQL response
+    body=#{inspect(body)}
+    """)
+  end
+
+  defp log_graphql_response(step, {:error, reason}) do
+    Logger.error("[Auth] #{step} GraphQL error: #{inspect(reason)}")
+  end
 end

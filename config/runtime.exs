@@ -24,16 +24,29 @@ config :credit_radar, :anbima_credentials,
   client_id: System.get_env("ANBIMA_CLIENT_ID") || "DE0HEr2yilpb",
   client_secret: System.get_env("ANBIMA_CLIENT_SECRET") || "TRfNQqqmoxqW"
 
-graphql_host = System.get_env("GRAPHQL_HOST") || "https://api.hubdoinvestidor.com.br"
+graphql_host =
+  System.get_env("GRAPHQL_HOST")
+  |> case do
+    nil -> "https://api.hubdoinvestidor.com.br"
+    host -> String.trim_trailing(host, "/")
+  end
+
+graphql_path =
+  case System.get_env("GRAPHQL_API_PATH") do
+    nil -> "/user/graphql"
+    path -> if(String.starts_with?(path, "/"), do: path, else: "/" <> path)
+  end
+
+default_graphql_url = System.get_env("GRAPHQL_API_URL") || graphql_host <> "/user/graphql"
 
 config :credit_radar, CreditRadar.GraphQL.Client,
-  url: System.get_env("GRAPHQL_API_URL") || "#{graphql_host}/user/graphql",
+  url: default_graphql_url,
   headers: [{"content-type", "application/json"}]
 
 config :credit_radar, CreditRadar.Auth,
   token_url: System.get_env("GRAPHQL_AUTH_URL") || graphql_host,
-  client_id: System.get_env("GRAPHQL_CLIENT_ID"),
-  client_secret: System.get_env("GRAPHQL_CLIENT_SECRET")
+  client_id: System.get_env("GRAPHQL_CLIENT_ID") || "U4NrL511yHwxcSiPe-oCPPYECguVMJ0iVMVuiOoLHmk",
+  client_secret: System.get_env("GRAPHQL_CLIENT_SECRET") || "2Kvpzi5q2c_Ljvds4JFT1opQ3rLsfJp7Ag9roXBb-yU"
 
 if config_env() == :prod do
   database_url =

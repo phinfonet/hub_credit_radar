@@ -37,6 +37,7 @@ defmodule CreditRadar.GraphQL.Client do
         {:ok, data}
 
       {:ok, %Req.Response{status: status, body: body}} ->
+        Logger.error("GraphQL HTTP error status=#{status} body=#{inspect(body)}")
         {:error, %{status: status, body: body}}
 
       {:error, reason} ->
