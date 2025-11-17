@@ -54,7 +54,8 @@ defmodule CreditRadar.Integrations.Anbima.CsvParser do
   defp normalize_header(header) do
     header
     |> String.trim()
-    |> String.replace("\uFEFF", "")  # Remove BOM
+    # Remove BOM
+    |> String.replace("\uFEFF", "")
     |> String.downcase()
   end
 end

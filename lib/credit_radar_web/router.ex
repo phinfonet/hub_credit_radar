@@ -8,6 +8,11 @@ defmodule CreditRadarWeb.Router do
     plug :put_root_layout, html: {CreditRadarWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_user
+  end
+
+  pipeline :browser_protected do
+    plug :require_authenticated_user
   end
 
   pipeline :api do
@@ -18,7 +23,15 @@ defmodule CreditRadarWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/login", AuthController, :new
+    post "/login", AuthController, :create
+  end
+
+  scope "/", CreditRadarWeb do
+    pipe_through [:browser, :browser_protected]
+
     live "/analise-credito", Live.CreditAnalysisLive
+    delete "/logout", AuthController, :delete
   end
 
   import Backpex.Router
@@ -26,11 +39,21 @@ defmodule CreditRadarWeb.Router do
   scope "/admin", CreditRadarWeb do
     pipe_through :browser
 
-    live_session :default, on_mount: Backpex.InitAssigns do
-      live_resources "/securities", Live.Admin.FixedIncomeSecurityLive, only: [:index, :show]
+    live_session :admin, on_mount: Backpex.InitAssigns do
+      live_resources "/securities", Live.Admin.FixedIncomeSecurityLive,
+        only: [:index, :show, :delete]
       live_resources "/assessments", Live.Admin.FixedIncomeAssessmentLive
       live_resources "/filter_rules", Live.Admin.FilterRuleLive
       live_resources "/executions", Live.Admin.ExecutionLive
+
+      live_resources "/cdi_history", Live.Admin.CDIHistoryLive,
+        only: [:index, :show, :resource_action]
+
+      live_resources "/selic_history", Live.Admin.SelicHistoryLive,
+        only: [:index, :show, :resource_action]
+
+      live_resources "/cdi_projections", Live.Admin.CDIProjectionLive
+      live_resources "/ipca_projections", Live.Admin.IPCAProjectionLive
     end
 
     backpex_routes()
@@ -57,4 +80,10 @@ defmodule CreditRadarWeb.Router do
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
+
+  defp fetch_current_user(conn, opts),
+    do: CreditRadarWeb.UserAuth.fetch_current_user(conn, opts)
+
+  defp require_authenticated_user(conn, opts),
+    do: CreditRadarWeb.UserAuth.require_authenticated_user(conn, opts)
 end

@@ -61,8 +61,11 @@ defmodule CreditRadar.Ingestions do
   """
   def valid_kind?(kind) do
     case normalize_kind(kind) do
-      {:ok, key} -> Enum.any?(@task_definitions, fn {candidate, _label, _module} -> candidate == key end)
-      :error -> false
+      {:ok, key} ->
+        Enum.any?(@task_definitions, fn {candidate, _label, _module} -> candidate == key end)
+
+      :error ->
+        false
     end
   end
 
@@ -100,7 +103,10 @@ defmodule CreditRadar.Ingestions do
       :ok
     else
       {:error, reason} ->
-        Logger.error("Unable to dispatch ingestion for kind #{inspect(execution.kind)}: #{inspect(reason)}")
+        Logger.error(
+          "Unable to dispatch ingestion for kind #{inspect(execution.kind)}: #{inspect(reason)}"
+        )
+
         mark_failed(execution)
         {:error, reason}
     end
@@ -127,6 +133,7 @@ defmodule CreditRadar.Ingestions do
     case Code.ensure_loaded(module) do
       {:module, ^module} ->
         Logger.info("✓ Module #{inspect(module)} loaded successfully")
+
       {:error, reason} ->
         Logger.error("✗ Failed to load module #{inspect(module)}: #{inspect(reason)}")
     end
@@ -151,9 +158,11 @@ defmodule CreditRadar.Ingestions do
           function_exported?(module, :run, 1) ->
             Logger.info("→ Calling #{inspect(module)}.run/1 with execution")
             module.run(execution)
+
           function_exported?(module, :run, 0) ->
             Logger.info("→ Calling #{inspect(module)}.run/0")
             module.run()
+
           true ->
             Logger.error("✗ Module #{inspect(module)} does not export run/1 or run/0")
             Logger.error("✗ Exported functions: #{inspect(module.__info__(:functions))}")

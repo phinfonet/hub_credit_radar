@@ -19,7 +19,7 @@ defmodule CreditRadarWeb.Live.Admin.FilterRuleLive do
     [
       security_code: %{
         module: Backpex.Fields.Text,
-        label: "Código do ativo",
+        label: "Código do ativo"
       }
     ]
   end

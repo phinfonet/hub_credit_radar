@@ -100,6 +100,7 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
 
   defp load_securities(socket) do
     filters = socket.assigns.filters
+
     securities =
       FixedIncome.list_securities_with_assessments(filters)
       |> sort_securities(socket.assigns.sort_by, socket.assigns.sort_order)
@@ -124,12 +125,28 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
   defp sort_value(security, :expected_return), do: decimal_to_float(security.expected_return)
   defp sort_value(security, :issuer_quality), do: security.issuer_quality || 0
   defp sort_value(security, :capital_structure), do: security.capital_structure || 0
-  defp sort_value(security, :grade), do: security.grade && Atom.to_string(security.grade) || "zzz"
+
+  defp sort_value(security, :grade),
+    do: (security.grade && Atom.to_string(security.grade)) || "zzz"
+
   defp sort_value(security, :rating_hub), do: decimal_to_float(security.rating_hub)
   defp sort_value(security, :solvency_ratio), do: security.solvency_ratio || 0
   defp sort_value(security, :credit_spread), do: security.credit_spread || 0
-  defp sort_value(security, :recommendation), do: security.recommendation && Atom.to_string(security.recommendation) || "zzz"
+
+  defp sort_value(security, :recommendation),
+    do: (security.recommendation && Atom.to_string(security.recommendation)) || "zzz"
+
   defp sort_value(_, _), do: 0
+
+  defp format_benchmark(security) do
+    case security.benchmark_index do
+      "di_multiple" -> "CDI %"
+      "di_plus" -> "CDI +"
+      "ipca" -> "IPCA +"
+      other when is_binary(other) -> String.upcase(other)
+      _ -> "-"
+    end
+  end
 
   defp decimal_to_float(nil), do: 0.0
   defp decimal_to_float(%Decimal{} = d), do: Decimal.to_float(d)
@@ -142,7 +159,6 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
     |> put_string_filter(:benchmark_index, params["benchmark_index"])
     |> put_atom_filter(:grade, params["grade"])
     |> put_atom_filter(:recommendation, params["recommendation"])
-    |> put_issuers_filter(params["issuers"])
     |> put_credit_risks_filter(params["credit_risks"])
   end
 
@@ -152,11 +168,13 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
 
   defp put_atom_filter(filters, _key, nil), do: filters
   defp put_atom_filter(filters, _key, ""), do: filters
+
   defp put_atom_filter(filters, key, value) when is_binary(value) do
     Map.put(filters, key, String.to_existing_atom(value))
   rescue
     ArgumentError -> filters
   end
+
   defp put_atom_filter(filters, _key, _value), do: filters
 
   defp put_integer_filter(filters, _key, nil), do: filters
@@ -168,21 +186,6 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
       parsed_value -> Map.put(filters, key, parsed_value)
     end
   end
-
-  defp put_issuers_filter(filters, nil), do: filters
-  defp put_issuers_filter(filters, []), do: filters
-
-  defp put_issuers_filter(filters, issuers) when is_list(issuers) do
-    cleaned = Enum.reject(issuers, &(&1 == "" or is_nil(&1)))
-
-    if Enum.empty?(cleaned) do
-      filters
-    else
-      Map.put(filters, :issuers, cleaned)
-    end
-  end
-
-  defp put_issuers_filter(filters, _), do: filters
 
   defp put_credit_risks_filter(filters, nil), do: filters
   defp put_credit_risks_filter(filters, []), do: filters
@@ -231,14 +234,20 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
         rating_hub_value = sec.rating_hub && Decimal.to_float(sec.rating_hub)
 
         %{
-          value: [duration_years, rating_hub_value],
+          value: [
+            duration_years,
+            rating_hub_value,
+            sec.credit_risk,
+            format_benchmark(sec),
+            sec.code
+          ],
           code: sec.code,
-          issuer: sec.issuer,
+          credit_risk: sec.credit_risk,
           duration: sec.duration,
           duration_years: duration_years,
           rating_hub: rating_hub_value,
           grade: sec.grade && Atom.to_string(sec.grade),
-          benchmark_index: sec.benchmark_index,
+          benchmark_display: format_benchmark(sec),
           security_type: Atom.to_string(sec.security_type),
           couponRate: sec.coupon_rate && Decimal.to_float(sec.coupon_rate)
         }
@@ -284,20 +293,42 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
     cond do
       current_field == field && current_order == :asc ->
         ~H"""
-        <svg class="w-4 h-4 inline-block ml-1 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          class="w-4 h-4 inline-block ml-1 text-teal-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
         </svg>
         """
+
       current_field == field && current_order == :desc ->
         ~H"""
-        <svg class="w-4 h-4 inline-block ml-1 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          class="w-4 h-4 inline-block ml-1 text-teal-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
         </svg>
         """
+
       true ->
         ~H"""
-        <svg class="w-4 h-4 inline-block ml-1 text-gray-600 opacity-0 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+        <svg
+          class="w-4 h-4 inline-block ml-1 text-gray-600 opacity-0 group-hover:opacity-100"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M8 9l4-4 4 4m0 6l-4 4-4-4"
+          />
         </svg>
         """
     end

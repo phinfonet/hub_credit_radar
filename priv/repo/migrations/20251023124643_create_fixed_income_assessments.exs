@@ -9,7 +9,7 @@ defmodule CreditRadar.Repo.Migrations.CreateFixedIncomeAssessments do
       add :credit_spread, :integer
       add :grade, :string
       add :recommendation, :string
-      add :security_id, references(:fixed_income_securities, on_delete: :nothing)
+      add :security_id, references(:fixed_income_securities, on_delete: :delete_all)
 
       timestamps(type: :utc_datetime)
     end

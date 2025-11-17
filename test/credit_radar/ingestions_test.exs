@@ -40,13 +40,18 @@ defmodule CreditRadar.IngestionsTest do
       ignore_rule = ignore_rule_fixture()
       update_attrs = %{code: "some updated code"}
 
-      assert {:ok, %IgnoreRule{} = ignore_rule} = Ingestions.update_ignore_rule(ignore_rule, update_attrs)
+      assert {:ok, %IgnoreRule{} = ignore_rule} =
+               Ingestions.update_ignore_rule(ignore_rule, update_attrs)
+
       assert ignore_rule.code == "some updated code"
     end
 
     test "update_ignore_rule/2 with invalid data returns error changeset" do
       ignore_rule = ignore_rule_fixture()
-      assert {:error, %Ecto.Changeset{}} = Ingestions.update_ignore_rule(ignore_rule, @invalid_attrs)
+
+      assert {:error, %Ecto.Changeset{}} =
+               Ingestions.update_ignore_rule(ignore_rule, @invalid_attrs)
+
       assert ignore_rule == Ingestions.get_ignore_rule!(ignore_rule.id)
     end
 
@@ -80,7 +85,13 @@ defmodule CreditRadar.IngestionsTest do
     end
 
     test "create_execution/1 with valid data creates a execution" do
-      valid_attrs = %{status: "some status", started_at: ~U[2025-10-25 04:57:00Z], kind: "some kind", finished_at: ~U[2025-10-25 04:57:00Z], trigger: "some trigger"}
+      valid_attrs = %{
+        status: "some status",
+        started_at: ~U[2025-10-25 04:57:00Z],
+        kind: "some kind",
+        finished_at: ~U[2025-10-25 04:57:00Z],
+        trigger: "some trigger"
+      }
 
       assert {:ok, %Execution{} = execution} = Ingestions.create_execution(valid_attrs)
       assert execution.status == "some status"
@@ -96,9 +107,18 @@ defmodule CreditRadar.IngestionsTest do
 
     test "update_execution/2 with valid data updates the execution" do
       execution = execution_fixture()
-      update_attrs = %{status: "some updated status", started_at: ~U[2025-10-26 04:57:00Z], kind: "some updated kind", finished_at: ~U[2025-10-26 04:57:00Z], trigger: "some updated trigger"}
 
-      assert {:ok, %Execution{} = execution} = Ingestions.update_execution(execution, update_attrs)
+      update_attrs = %{
+        status: "some updated status",
+        started_at: ~U[2025-10-26 04:57:00Z],
+        kind: "some updated kind",
+        finished_at: ~U[2025-10-26 04:57:00Z],
+        trigger: "some updated trigger"
+      }
+
+      assert {:ok, %Execution{} = execution} =
+               Ingestions.update_execution(execution, update_attrs)
+
       assert execution.status == "some updated status"
       assert execution.started_at == ~U[2025-10-26 04:57:00Z]
       assert execution.kind == "some updated kind"

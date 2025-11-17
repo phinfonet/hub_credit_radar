@@ -107,7 +107,8 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesPlus do
 
   def persist_operations(operations) when is_list(operations) do
     stats =
-      Enum.reduce(operations, %{created: 0, updated: 0, skipped: 0, errors: []}, fn operation, acc ->
+      Enum.reduce(operations, %{created: 0, updated: 0, skipped: 0, errors: []}, fn operation,
+                                                                                    acc ->
         case persist_operation(operation) do
           {:ok, :created} ->
             %{acc | created: acc.created + 1}
@@ -116,7 +117,10 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesPlus do
             %{acc | updated: acc.updated + 1}
 
           {:skip, reason} ->
-            Logger.debug("Skipping Debêntures Plus security persistence because #{inspect(reason)}: #{inspect(operation)}")
+            Logger.debug(
+              "Skipping Debêntures Plus security persistence because #{inspect(reason)}: #{inspect(operation)}"
+            )
+
             %{acc | skipped: acc.skipped + 1}
 
           {:error, reason} ->
@@ -223,8 +227,11 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesPlus do
     |> FixedIncome.security_create_changeset(attrs)
     |> Repo.insert()
     |> case do
-      {:ok, _security} -> {:ok, :created}
-      {:error, %Changeset{} = changeset} -> {:error, {:changeset_error, changeset_errors(changeset)}}
+      {:ok, _security} ->
+        {:ok, :created}
+
+      {:error, %Changeset{} = changeset} ->
+        {:error, {:changeset_error, changeset_errors(changeset)}}
     end
   end
 
@@ -235,8 +242,11 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesPlus do
     |> FixedIncome.security_update_changeset(attrs)
     |> Repo.update()
     |> case do
-      {:ok, _security} -> {:ok, :updated}
-      {:error, %Changeset{} = changeset} -> {:error, {:changeset_error, changeset_errors(changeset)}}
+      {:ok, _security} ->
+        {:ok, :updated}
+
+      {:error, %Changeset{} = changeset} ->
+        {:error, {:changeset_error, changeset_errors(changeset)}}
     end
   end
 

@@ -18,8 +18,24 @@ defmodule CreditRadar.FixedIncome.Assessment do
   @doc false
   def changeset(assessment, attrs) do
     assessment
-    |> cast(attrs, [:issuer_quality, :capital_structure, :solvency_ratio, :credit_spread, :grade, :recommendation, :security_id])
-    |> validate_required([:issuer_quality, :capital_structure, :solvency_ratio, :credit_spread, :grade, :recommendation, :security_id])
+    |> cast(attrs, [
+      :issuer_quality,
+      :capital_structure,
+      :solvency_ratio,
+      :credit_spread,
+      :grade,
+      :recommendation,
+      :security_id
+    ])
+    |> validate_required([
+      :issuer_quality,
+      :capital_structure,
+      :solvency_ratio,
+      :credit_spread,
+      :grade,
+      :recommendation,
+      :security_id
+    ])
     |> validate_inclusion(:issuer_quality, 1..5)
     |> validate_inclusion(:capital_structure, 1..5)
     |> validate_inclusion(:solvency_ratio, 1..5)

@@ -69,7 +69,9 @@ defmodule CreditRadar.MixProject do
       {:bandit, "~> 1.5"},
       {:nebulex, "~> 2.6"},
       {:backpex, "~> 0.16.0"},
-      {:nimble_csv, "~> 1.2"}
+      {:nimble_csv, "~> 1.2"},
+      {:xlsxir, "~> 1.6"},
+      {:sweet_xml, "~> 0.7"}
     ]
   end
 
@@ -85,7 +87,11 @@ defmodule CreditRadar.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing", "cmd --cd assets npm install"],
+      "assets.setup": [
+        "tailwind.install --if-missing",
+        "esbuild.install --if-missing",
+        "cmd --cd assets npm install"
+      ],
       "assets.build": ["compile", "tailwind credit_radar", "esbuild credit_radar"],
       "assets.deploy": [
         "cmd --cd assets npm install --production",

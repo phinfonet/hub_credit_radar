@@ -15,9 +15,11 @@ defmodule CreditRadar.Integrations.Anbima.Auth do
     case CreditRadar.Cache.get(@token_store_key) do
       nil ->
         Logger.debug("Anbima token not in cache, fetching new token")
+
         client()
         |> Req.post(url: "/oauth/access-token", json: %{grant_type: "client_credentials"})
         |> save_token()
+
       token ->
         Logger.debug("Using cached Anbima token")
         token
@@ -35,8 +37,10 @@ defmodule CreditRadar.Integrations.Anbima.Auth do
         Logger.warning("CreditRadar.Cache not started, waiting... (#{retries} retries left)")
         Process.sleep(100)
         ensure_cache_started!(retries - 1)
+
       nil ->
         raise "CreditRadar.Cache failed to start after 5 seconds"
+
       _pid ->
         :ok
     end

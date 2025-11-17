@@ -16,7 +16,6 @@ defmodule CreditRadar.Integrations.Anbima.Client do
     |> Req.get(url: "/v1/debentures/mercado-secundario")
   end
 
-
   @doc """
   Calls `/v1/debentures/mercado-secundario`.
   """
@@ -57,7 +56,6 @@ defmodule CreditRadar.Integrations.Anbima.Client do
       ]
     )
   end
-
 
   defp credentials, do: Application.fetch_env!(:credit_radar, :anbima_credentials)
 end

@@ -25,7 +25,9 @@ defmodule CreditRadar.Ingestions.Execution do
 
   defp validate_kind(changeset) do
     validate_change(changeset, :kind, fn :kind, value ->
-      if CreditRadar.Ingestions.valid_kind?(value), do: [], else: [kind: "tipo de ingestão inválido"]
+      if CreditRadar.Ingestions.valid_kind?(value),
+        do: [],
+        else: [kind: "tipo de ingestão inválido"]
     end)
   end
 end

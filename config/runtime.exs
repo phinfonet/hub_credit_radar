@@ -24,8 +24,18 @@ config :credit_radar, :anbima_credentials,
   client_id: System.get_env("ANBIMA_CLIENT_ID") || "DE0HEr2yilpb",
   client_secret: System.get_env("ANBIMA_CLIENT_SECRET") || "TRfNQqqmoxqW"
 
-if config_env() == :prod do
+graphql_host = System.get_env("GRAPHQL_HOST") || "https://api.hubdoinvestidor.com.br"
 
+config :credit_radar, CreditRadar.GraphQL.Client,
+  url: System.get_env("GRAPHQL_API_URL") || "#{graphql_host}/user/graphql",
+  headers: [{"content-type", "application/json"}]
+
+config :credit_radar, CreditRadar.Auth,
+  token_url: System.get_env("GRAPHQL_AUTH_URL") || graphql_host,
+  client_id: System.get_env("GRAPHQL_CLIENT_ID"),
+  client_secret: System.get_env("GRAPHQL_CLIENT_SECRET")
+
+if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

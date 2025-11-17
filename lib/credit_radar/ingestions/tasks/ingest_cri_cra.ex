@@ -138,6 +138,7 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
   defp map_entry(entry) when is_map(entry) do
     ntnb_reference = fetch(entry, "referencia_ntnb")
     ntnb_reference_date = parse_date(fetch(entry, "data_referencia_ntnb"))
+    remuneration_type = fetch(entry, "tipo_remuneracao")
 
     %{
       code: fetch(entry, "codigo_ativo"),
@@ -148,7 +149,8 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
       credit_risk: fetch(entry, "originador"),
       ntnb_reference: ntnb_reference,
       ntnb_reference_date: ntnb_reference_date,
-      benchmark_index: determine_benchmark_index(ntnb_reference, ntnb_reference_date),
+      benchmark_index:
+        determine_benchmark_index(ntnb_reference, ntnb_reference_date, remuneration_type),
       series: fetch(entry, "serie"),
       correction_rate: decimal(fetch(entry, "taxa_correcao")),
       coupon_rate: decimal(fetch(entry, "taxa_indicativa")),
@@ -162,7 +164,8 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
 
   def persist_operations(operations) when is_list(operations) do
     stats =
-      Enum.reduce(operations, %{created: 0, updated: 0, skipped: 0, errors: []}, fn operation, acc ->
+      Enum.reduce(operations, %{created: 0, updated: 0, skipped: 0, errors: []}, fn operation,
+                                                                                    acc ->
         case persist_operation(operation) do
           {:ok, :created} ->
             %{acc | created: acc.created + 1}
@@ -171,14 +174,17 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
             %{acc | updated: acc.updated + 1}
 
           {:skip, reason} ->
-            Logger.debug("Skipping CRI/CRA security persistence because #{inspect(reason)}: #{inspect(operation)}")
+            Logger.debug(
+              "Skipping CRI/CRA security persistence because #{inspect(reason)}: #{inspect(operation)}"
+            )
+
             %{acc | skipped: acc.skipped + 1}
 
           {:error, reason} ->
             %{acc | errors: acc.errors ++ [{:error, reason, operation}]}
         end
       end)
-      
+
     Logger.info(
       "CRI/CRA ingestion persisted #{stats.created + stats.updated} securities " <>
         "(created: #{stats.created}, updated: #{stats.updated}, skipped: #{stats.skipped}, errors: #{length(stats.errors)})"
@@ -285,8 +291,11 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
     |> FixedIncome.security_create_changeset(attrs)
     |> Repo.insert()
     |> case do
-      {:ok, _security} -> {:ok, :created}
-      {:error, %Changeset{} = changeset} -> {:error, {:changeset_error, changeset_errors(changeset)}}
+      {:ok, _security} ->
+        {:ok, :created}
+
+      {:error, %Changeset{} = changeset} ->
+        {:error, {:changeset_error, changeset_errors(changeset)}}
     end
   end
 
@@ -297,8 +306,11 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
     |> FixedIncome.security_update_changeset(attrs)
     |> Repo.update()
     |> case do
-      {:ok, _security} -> {:ok, :updated}
-      {:error, %Changeset{} = changeset} -> {:error, {:changeset_error, changeset_errors(changeset)}}
+      {:ok, _security} ->
+        {:ok, :updated}
+
+      {:error, %Changeset{} = changeset} ->
+        {:error, {:changeset_error, changeset_errors(changeset)}}
     end
   end
 
@@ -395,10 +407,29 @@ defmodule CreditRadar.Ingestions.Tasks.IngestCriCra do
   defp format_contract_type("debenture"), do: :debenture
   defp format_contract_type("debenture+"), do: :debenture_plus
 
-  defp determine_benchmark_index(ntnb_reference, ntnb_reference_date)
-       when not is_nil(ntnb_reference) and not is_nil(ntnb_reference_date) do
-    "ipca"
+  defp determine_benchmark_index(ntnb_reference, ntnb_reference_date, remuneration_type)
+       when not is_nil(ntnb_reference) and not is_nil(ntnb_reference_date),
+       do: "ipca"
+
+  defp determine_benchmark_index(_ntnb_reference, _ntnb_reference_date, remuneration_type) do
+    remuneration_type
+    |> normalize_remuneration()
+    |> case do
+      "di aditivo" -> "di_plus"
+      "di multiplicativo" -> "di_multiple"
+      type when type in ["cdi", "di"] -> "cdi"
+      "ipca" -> "ipca"
+      _ -> nil
+    end
   end
 
-  defp determine_benchmark_index(_, _), do: nil
+  defp normalize_remuneration(nil), do: nil
+
+  defp normalize_remuneration(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+  end
+
+  defp normalize_remuneration(_), do: nil
 end

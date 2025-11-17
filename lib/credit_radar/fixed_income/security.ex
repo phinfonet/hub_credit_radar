@@ -17,7 +17,7 @@ defmodule CreditRadar.FixedIncome.Security do
     field :reference_date, :date
     field :ntnb_reference, :string
     field :ntnb_reference_date, :date
-    field :sync_source, Ecto.Enum, values: [:api]
+    field :sync_source, Ecto.Enum, values: [:api, :xls]
     has_one :assessment, CreditRadar.FixedIncome.Assessment
 
     timestamps(type: :utc_datetime)
@@ -45,12 +45,19 @@ defmodule CreditRadar.FixedIncome.Security do
     ])
     |> normalize_string_fields()
     |> validate_required([:issuer, :security_type, :series, :issuing, :code, :duration])
-    |> calculate_expected_return()
   end
 
   defp normalize_string_fields(changeset) do
     # Normaliza campos de texto removendo espaços extras
-    string_fields = [:issuer, :credit_risk, :code, :series, :issuing, :benchmark_index, :ntnb_reference]
+    string_fields = [
+      :issuer,
+      :credit_risk,
+      :code,
+      :series,
+      :issuing,
+      :benchmark_index,
+      :ntnb_reference
+    ]
 
     Enum.reduce(string_fields, changeset, fn field, acc ->
       # Pega o valor atual (change ou field existente)
@@ -59,6 +66,7 @@ defmodule CreditRadar.FixedIncome.Security do
       case value do
         nil ->
           acc
+
         value when is_binary(value) ->
           # Remove espaços no início/fim e múltiplos espaços internos
           normalized = value |> String.trim() |> String.replace(~r/\s+/, " ")
@@ -68,27 +76,11 @@ defmodule CreditRadar.FixedIncome.Security do
           else
             acc
           end
+
         _ ->
           acc
       end
     end)
   end
 
-  defp calculate_expected_return(changeset) do
-    coupon_rate = get_field(changeset, :coupon_rate)
-    correction_rate = get_field(changeset, :correction_rate)
-
-    if coupon_rate && correction_rate do
-      # Multiplica os percentuais e divide por 100
-      # Ex: 99.5638% * 95% = (99.5638 * 95) / 100 = 94.5856%
-      expected_return =
-        coupon_rate
-        |> Decimal.mult(correction_rate)
-        |> Decimal.div(100)
-
-      put_change(changeset, :expected_return, expected_return)
-    else
-      changeset
-    end
-  end
 end

@@ -13,11 +13,11 @@
         </div>
         <div class="flex items-center gap-4">
           <span class="text-sm text-gray-400">
-            <%= length(@securities) %> ativos carregados
+            {length(@securities)} ativos carregados
           </span>
           <%= if MapSet.size(@selected_securities) > 0 do %>
             <span class="px-3 py-1 bg-teal-500/20 text-teal-400 rounded-full text-sm font-medium">
-              <%= MapSet.size(@selected_securities) %> selecionados
+              {MapSet.size(@selected_securities)} selecionados
             </span>
           <% end %>
         </div>
@@ -30,7 +30,12 @@
     <div class="bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-700 p-6 mb-6">
       <h2 class="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
         <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+          />
         </svg>
         Filtros de Análise
       </h2>
@@ -47,12 +52,19 @@
               <option value="">Todos</option>
               <option value="cri" selected={@filters[:security_type] == "cri"}>CRI</option>
               <option value="cra" selected={@filters[:security_type] == "cra"}>CRA</option>
-              <option value="debenture" selected={@filters[:security_type] == "debenture"}>Debênture</option>
-              <option value="debenture_plus" selected={@filters[:security_type] == "debenture_plus"}>Debênture Plus</option>
+              <option value="debenture" selected={@filters[:security_type] == "debenture"}>
+                Debênture
+              </option>
+              <option
+                value="debenture_plus"
+                selected={@filters[:security_type] == "debenture_plus"}
+              >
+                Debênture Plus
+              </option>
             </select>
           </div>
-
-          <!-- Benchmark Index Filter -->
+          
+<!-- Benchmark Index Filter -->
           <div>
             <label class="block text-sm font-medium text-gray-300 mb-2">Benchmark Index</label>
             <select
@@ -62,13 +74,13 @@
               <option value="">Todos</option>
               <%= for index <- @benchmark_indexes do %>
                 <option value={index} selected={@filters[:benchmark_index] == index}>
-                  <%= String.upcase(index) %>
+                  {String.upcase(index)}
                 </option>
               <% end %>
             </select>
           </div>
-
-          <!-- Grade Filter -->
+          
+<!-- Grade Filter -->
           <div>
             <label class="block text-sm font-medium text-gray-300 mb-2">Grade</label>
             <select
@@ -80,8 +92,8 @@
               <option value="hg" selected={@filters[:grade] == "hg"}>HG</option>
             </select>
           </div>
-
-          <!-- Recommendation Filter -->
+          
+<!-- Recommendation Filter -->
           <div>
             <label class="block text-sm font-medium text-gray-300 mb-2">Recomendação</label>
             <select
@@ -89,12 +101,16 @@
               class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
             >
               <option value="">Todos</option>
-              <option value="enter" selected={@filters[:recommendation] == "enter"}>Entrar</option>
-              <option value="not_enter" selected={@filters[:recommendation] == "not_enter"}>Não Entrar</option>
+              <option value="enter" selected={@filters[:recommendation] == "enter"}>
+                Entrar
+              </option>
+              <option value="not_enter" selected={@filters[:recommendation] == "not_enter"}>
+                Não Entrar
+              </option>
             </select>
           </div>
-
-          <!-- Credit Risk Filter (Tom Select) -->
+          
+<!-- Credit Risk Filter (Tom Select) -->
           <div class="lg:col-span-2">
             <label class="block text-sm font-medium text-gray-300 mb-2">
               Riscos de Crédito (Originadores)
@@ -110,35 +126,13 @@
                     value={credit_risk}
                     selected={@filters[:credit_risks] && credit_risk in @filters[:credit_risks]}
                   >
-                    <%= credit_risk %>
+                    {credit_risk}
                   </option>
                 <% end %>
               </select>
             </div>
           </div>
-
-          <!-- Issuer Filter (Tom Select) -->
-          <div class="lg:col-span-2">
-            <label class="block text-sm font-medium text-gray-300 mb-2">
-              Emissores (Securitizadoras)
-            </label>
-            <div phx-hook="TomSelect" id="issuer-select-wrapper" phx-update="ignore">
-              <select
-                name="issuers[]"
-                multiple
-                class="w-full"
-              >
-                <%= for issuer <- @issuers do %>
-                  <option
-                    value={issuer}
-                    selected={@filters[:issuers] && issuer in @filters[:issuers]}
-                  >
-                    <%= issuer %>
-                  </option>
-                <% end %>
-              </select>
-            </div>
-          </div>
+          
         </div>
 
         <div class="flex gap-3 mt-4">
@@ -147,7 +141,12 @@
             class="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
             Aplicar Filtros
           </button>
@@ -161,19 +160,24 @@
         </div>
       </form>
     </div>
-
-    <!-- Chart Section -->
+    
+<!-- Chart Section -->
     <div class="bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-700 p-6 mb-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-200 flex items-center gap-2">
           <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+            />
           </svg>
           Gráfico de Dispersão: Duration (anos) vs Rating Hub
         </h2>
         <div class="text-sm text-gray-400">
           <%= if MapSet.size(@selected_securities) > 0 do %>
-            Mostrando <%= MapSet.size(@selected_securities) %> ativos selecionados
+            Mostrando {MapSet.size(@selected_securities)} ativos selecionados
           <% else %>
             Mostrando todos os ativos com assessment
           <% end %>
@@ -188,14 +192,24 @@
       >
       </div>
     </div>
-
-    <!-- Data Table Section -->
+    
+<!-- Data Table Section -->
     <div class="bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-700 overflow-hidden">
       <div class="p-6 border-b border-gray-700">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold text-gray-200 flex items-center gap-2">
-            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            <svg
+              class="w-5 h-5 text-purple-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
             </svg>
             Tabela de Análise - Securities & Assessments
           </h2>
@@ -225,55 +239,116 @@
               <th class="px-4 py-3 text-left">
                 <input
                   type="checkbox"
-                  phx-click={if MapSet.size(@selected_securities) == length(@securities) and length(@securities) > 0, do: "deselect_all", else: "select_all"}
-                  checked={MapSet.size(@selected_securities) == length(@securities) and length(@securities) > 0}
+                  phx-click={
+                    if MapSet.size(@selected_securities) == length(@securities) and
+                         length(@securities) > 0,
+                       do: "deselect_all",
+                       else: "select_all"
+                  }
+                  checked={
+                    MapSet.size(@selected_securities) == length(@securities) and
+                      length(@securities) > 0
+                  }
                   class="w-4 h-4 rounded border-gray-600 text-teal-500 focus:ring-teal-500 cursor-pointer"
                 />
               </th>
-              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="code">
-                Código<%= sort_icon(assigns, :code) %>
+              <th
+                class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="code"
+              >
+                Código{sort_icon(assigns, :code)}
               </th>
-              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="credit_risk">
-                Risco de Crédito / Emissor<%= sort_icon(assigns, :credit_risk) %>
+              <th
+                class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="credit_risk"
+              >
+                Risco de Crédito / Emissor{sort_icon(assigns, :credit_risk)}
               </th>
-              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="security_type">
-                Tipo<%= sort_icon(assigns, :security_type) %>
+              <th
+                class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="security_type"
+              >
+                Tipo{sort_icon(assigns, :security_type)}
               </th>
-              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="benchmark_index">
-                Benchmark<%= sort_icon(assigns, :benchmark_index) %>
+              <th
+                class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="benchmark_index"
+              >
+                Benchmark{sort_icon(assigns, :benchmark_index)}
               </th>
-              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="duration">
-                Duration (anos)<%= sort_icon(assigns, :duration) %>
+              <th
+                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="duration"
+              >
+                Duration (anos){sort_icon(assigns, :duration)}
               </th>
-              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="coupon_rate">
-                Taxa Indicativa<%= sort_icon(assigns, :coupon_rate) %>
+              <th
+                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="coupon_rate"
+              >
+                Taxa Indicativa{sort_icon(assigns, :coupon_rate)}
               </th>
-              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="correction_rate">
-                Taxa Correção<%= sort_icon(assigns, :correction_rate) %>
+              <th
+                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="expected_return"
+              >
+                Retorno Esperado{sort_icon(assigns, :expected_return)}
               </th>
-              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="expected_return">
-                Retorno Esperado<%= sort_icon(assigns, :expected_return) %>
+              <th
+                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="issuer_quality"
+              >
+                Qualidade do Emissor{sort_icon(assigns, :issuer_quality)}
               </th>
-              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="issuer_quality">
-                Qualidade do Emissor<%= sort_icon(assigns, :issuer_quality) %>
+              <th
+                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="capital_structure"
+              >
+                Estrutura de Capital{sort_icon(assigns, :capital_structure)}
               </th>
-              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="capital_structure">
-                Estrutura de Capital<%= sort_icon(assigns, :capital_structure) %>
+              <th
+                class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="grade"
+              >
+                Grade{sort_icon(assigns, :grade)}
               </th>
-              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="grade">
-                Grade<%= sort_icon(assigns, :grade) %>
+              <th
+                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="rating_hub"
+              >
+                Rating Hub{sort_icon(assigns, :rating_hub)}
               </th>
-              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="rating_hub">
-                Rating Hub<%= sort_icon(assigns, :rating_hub) %>
+              <th
+                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="solvency_ratio"
+              >
+                Solvência{sort_icon(assigns, :solvency_ratio)}
               </th>
-              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="solvency_ratio">
-                Solvência<%= sort_icon(assigns, :solvency_ratio) %>
+              <th
+                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="credit_spread"
+              >
+                Prêmio de Risco{sort_icon(assigns, :credit_spread)}
               </th>
-              <th class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="credit_spread">
-                Prêmio de Risco<%= sort_icon(assigns, :credit_spread) %>
-              </th>
-              <th class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors" phx-click="sort" phx-value-field="recommendation">
-                Recomendação<%= sort_icon(assigns, :recommendation) %>
+              <th
+                class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="recommendation"
+              >
+                Recomendação{sort_icon(assigns, :recommendation)}
               </th>
             </tr>
           </thead>
@@ -290,42 +365,39 @@
                   />
                 </td>
                 <td class="px-4 py-3 font-mono text-sm text-teal-400">
-                  <%= security.code %>
+                  {security.code}
                 </td>
                 <td class="px-4 py-3 text-sm">
                   <div class="flex flex-col gap-0.5">
                     <span class="text-gray-200 font-semibold">
-                      <%= security.credit_risk || "-" %>
+                      {security.credit_risk || "-"}
                     </span>
                     <span class="text-gray-400 text-xs">
-                      <%= security.issuer %>
+                      {security.issuer}
                     </span>
                   </div>
                 </td>
                 <td class="px-4 py-3 text-sm">
                   <span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-200">
-                    <%= format_security_type(security.security_type) %>
+                    {format_security_type(security.security_type)}
                   </span>
                 </td>
                 <td class="px-4 py-3 text-sm text-gray-300">
-                  <%= security.benchmark_index || "-" %>
+                  {format_benchmark(security)}
                 </td>
                 <td class="px-4 py-3 text-sm text-right text-gray-200 font-medium">
-                  <%= days_to_years(security.duration) %> anos
+                  {days_to_years(security.duration)} anos
                 </td>
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
-                  <%= format_decimal(security.coupon_rate) %>%
-                </td>
-                <td class="px-4 py-3 text-sm text-right text-gray-200">
-                  <%= format_decimal(security.correction_rate) %>%
+                  {format_decimal(security.coupon_rate)}%
                 </td>
                 <td class="px-4 py-3 text-sm text-right text-gray-200 font-semibold">
-                  <%= format_decimal(security.expected_return) %>%
+                  {format_decimal(security.expected_return)}%
                 </td>
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
                   <%= if security.issuer_quality do %>
                     <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.issuer_quality)}"}>
-                      <%= security.issuer_quality %>
+                      {security.issuer_quality}
                     </span>
                   <% else %>
                     <span class="text-gray-500 text-xs">-</span>
@@ -334,7 +406,7 @@
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
                   <%= if security.capital_structure do %>
                     <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.capital_structure)}"}>
-                      <%= security.capital_structure %>
+                      {security.capital_structure}
                     </span>
                   <% else %>
                     <span class="text-gray-500 text-xs">-</span>
@@ -343,7 +415,7 @@
                 <td class="px-4 py-3 text-sm">
                   <%= if security.grade do %>
                     <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-700 text-gray-200 uppercase">
-                      <%= to_string(security.grade) %>
+                      {to_string(security.grade)}
                     </span>
                   <% else %>
                     <span class="text-gray-500 text-xs">-</span>
@@ -352,7 +424,7 @@
                 <td class="px-4 py-3 text-sm text-right">
                   <%= if security.rating_hub do %>
                     <span class="font-bold text-lg bg-gradient-to-r from-teal-500 to-blue-500 bg-clip-text text-transparent">
-                      <%= format_decimal(security.rating_hub) %>
+                      {format_decimal(security.rating_hub)}
                     </span>
                   <% else %>
                     <span class="text-gray-500 text-xs">-</span>
@@ -361,7 +433,7 @@
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
                   <%= if security.solvency_ratio do %>
                     <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.solvency_ratio)}"}>
-                      <%= security.solvency_ratio %>
+                      {security.solvency_ratio}
                     </span>
                   <% else %>
                     <span class="text-gray-500 text-xs">-</span>
@@ -370,7 +442,7 @@
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
                   <%= if security.credit_spread do %>
                     <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.credit_spread)}"}>
-                      <%= security.credit_spread %>
+                      {security.credit_spread}
                     </span>
                   <% else %>
                     <span class="text-gray-500 text-xs">-</span>
@@ -379,9 +451,13 @@
                 <td class="px-4 py-3 text-sm">
                   <%= case security.recommendation do %>
                     <% :enter -> %>
-                      <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-500/20 text-green-400 ring-1 ring-green-500/30">Entrar</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-500/20 text-green-400 ring-1 ring-green-500/30">
+                        Entrar
+                      </span>
                     <% :not_enter -> %>
-                      <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/20 text-red-400 ring-1 ring-red-500/30">Não Entrar</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/20 text-red-400 ring-1 ring-red-500/30">
+                        Não Entrar
+                      </span>
                     <% _ -> %>
                       <span class="text-gray-500 text-xs">-</span>
                   <% end %>
@@ -393,8 +469,18 @@
               <tr>
                 <td colspan="16" class="px-4 py-12 text-center text-gray-400">
                   <div class="flex flex-col items-center gap-2">
-                    <svg class="w-12 h-12 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                    <svg
+                      class="w-12 h-12 text-gray-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                      />
                     </svg>
                     <p class="text-lg font-medium">Nenhum ativo encontrado</p>
                     <p class="text-sm">Tente ajustar os filtros de busca</p>
@@ -407,8 +493,8 @@
       </div>
     </div>
   </div>
-
-  <!-- Footer -->
+  
+<!-- Footer -->
   <footer class="bg-gray-900/50 backdrop-blur-sm border-t border-gray-700 mt-12 py-6">
     <div class="container mx-auto px-4 text-center text-sm text-gray-400">
       <p>Hub do Investidor - Credit Radar © 2025</p>

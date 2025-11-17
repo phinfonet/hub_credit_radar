@@ -12,6 +12,8 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive do
   import Ecto.Query
   alias CreditRadar.FixedIncome
   alias CreditRadar.FixedIncome.{Assessment, Security}
+  alias CreditRadar.Repo
+  alias Backpex.Fields.BelongsTo
   alias CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive
 
   @impl Backpex.LiveResource
@@ -29,8 +31,9 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive do
         render: fn assigns ->
           code = if assigns.item.security, do: assigns.item.security.code, else: "-"
           assigns = Map.put(assigns, :code, code)
+
           ~H"""
-          <span><%= @code %></span>
+          <span>{@code}</span>
           """
         end,
         only: [:index]
@@ -40,7 +43,8 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive do
         label: "Risco de Crédito",
         display_field: :credit_risk,
         live_resource: FixedIncomeSecurityLive,
-        options_query: &__MODULE__.unique_securities_for_select/2
+        options_query: &__MODULE__.unique_securities_for_select/2,
+        render_form: &render_security_field/1
       },
       issuer_quality: %{
         module: Backpex.Fields.Select,
@@ -83,11 +87,7 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive do
   end
 
   @impl Backpex.LiveResource
-  def on_item_updated(socket, assessment) do
-    # Quando edita um assessment, atualiza todos os outros do mesmo credit_risk
-    FixedIncome.update_assessments_by_credit_risk(assessment)
-    socket
-  end
+  def on_item_updated(socket, _assessment), do: socket
 
   @doc """
   Custom item query to preload security association.
@@ -120,5 +120,32 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive do
       join: sq in subquery(subquery),
       on: s.id == sq.id,
       order_by: [asc: s.credit_risk, desc: s.reference_date]
+  end
+
+  def render_security_field(assigns) do
+    if is_nil(assigns.form[:security_id].value) do
+      BelongsTo.render_form(assigns)
+    else
+      security =
+        assigns.item.security ||
+          (assigns.form[:security_id].value && Repo.get(Security, assigns.form[:security_id].value))
+
+      assigns =
+      assign(assigns,
+        security_info:
+          case security do
+            %Security{} -> "#{security.code} · #{security.credit_risk}"
+            _ -> "—"
+          end
+      )
+
+      ~H"""
+      <div>
+        <p class="text-sm font-semibold text-gray-700">Ativo em avaliação</p>
+        <p class="text-gray-900">{@security_info}</p>
+        <input type="hidden" name={@form[:security_id].name} value={@form[:security_id].value} />
+      </div>
+      """
+    end
   end
 end
