@@ -10,6 +10,16 @@ config :credit_radar, CreditRadar.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+# Configure Hub Backend database (Rails) - Read-only for admin authentication
+config :credit_radar, CreditRadar.HubRepo,
+  username: "casaos",
+  password: "casaos",
+  hostname: "192.168.15.4",
+  database: "hub_do_investidor_development",
+  stacktrace: true,
+  show_sensitive_data_on_connection_error: true,
+  pool_size: 2
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

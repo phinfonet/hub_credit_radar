@@ -53,6 +53,20 @@ if config_env() == :prod do
     # pool_count: 4,
     socket_options: maybe_ipv6
 
+  # Hub Backend (Rails) database - Read-only for admin authentication
+  hub_database_url =
+    System.get_env("HUB_DATABASE_URL") ||
+      raise """
+      environment variable HUB_DATABASE_URL is missing.
+      For example: ecto://USER:PASS@HOST/hub_do_investidor_production
+      """
+
+  config :credit_radar, CreditRadar.HubRepo,
+    # ssl: true,
+    url: hub_database_url,
+    pool_size: String.to_integer(System.get_env("HUB_POOL_SIZE") || "2"),
+    socket_options: maybe_ipv6
+
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
   # want to use a different value for prod and you most likely don't want

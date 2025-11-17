@@ -9,10 +9,15 @@ defmodule CreditRadarWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_user
+    plug :fetch_current_admin
   end
 
   pipeline :browser_protected do
     plug :require_authenticated_user
+  end
+
+  pipeline :admin_protected do
+    plug :require_authenticated_admin
   end
 
   pipeline :api do
@@ -38,6 +43,15 @@ defmodule CreditRadarWeb.Router do
 
   scope "/admin", CreditRadarWeb do
     pipe_through :browser
+
+    get "/login", AdminSessionController, :new
+    post "/login", AdminSessionController, :create
+  end
+
+  scope "/admin", CreditRadarWeb do
+    pipe_through [:browser, :admin_protected]
+
+    delete "/logout", AdminSessionController, :delete
 
     live_session :admin, on_mount: Backpex.InitAssigns do
       live_resources "/securities", Live.Admin.FixedIncomeSecurityLive,
@@ -86,4 +100,10 @@ defmodule CreditRadarWeb.Router do
 
   defp require_authenticated_user(conn, opts),
     do: CreditRadarWeb.UserAuth.require_authenticated_user(conn, opts)
+
+  defp fetch_current_admin(conn, opts),
+    do: CreditRadarWeb.AdminAuth.fetch_current_admin(conn, opts)
+
+  defp require_authenticated_admin(conn, opts),
+    do: CreditRadarWeb.AdminAuth.require_authenticated_admin(conn, opts)
 end
