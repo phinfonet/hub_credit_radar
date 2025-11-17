@@ -1,25 +1,7 @@
 #!/bin/bash
-set -e
-
-echo "Pulling..."
-git pull origin main
-
-echo "Installing deps..."
-mix deps.get  
-
-echo "Installing npm..."
-cd assets && npm install && cd ..
-
-echo "Building assets..."
+mix deps.get --only prod
+MIX_ENV=prod mix compile
 MIX_ENV=prod mix assets.deploy
-
-echo "Building release..."
-MIX_ENV=prod mix release --overwrite
-
-echo "Running migrations..."
+MIX_ENV=prod mix release
 _build/prod/rel/credit_radar/bin/migrate
-
-echo "Restarting..."
-sudo systemctl restart credit_radar
-
-echo "✅ Done!"
+_build/prod/rel/credit_radar/bin/server
