@@ -11,12 +11,16 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
       |> assign(:filters, %{})
       |> assign(:securities, [])
       |> assign(:selected_securities, MapSet.new())
-      |> assign(:issuers, FixedIncome.list_unique_issuers())
-      |> assign(:credit_risks, FixedIncome.list_unique_credit_risks())
-      |> assign(:benchmark_indexes, FixedIncome.list_unique_benchmark_indexes())
+      |> assign(:issuers, [])
+      |> assign(:credit_risks, [])
+      |> assign(:benchmark_indexes, [])
       |> assign(:sort_by, :code)
       |> assign(:sort_order, :asc)
-      |> load_securities()
+      # Queries desativadas para melhorar performance inicial
+      # |> assign(:issuers, FixedIncome.list_unique_issuers())
+      # |> assign(:credit_risks, FixedIncome.list_unique_credit_risks())
+      # |> assign(:benchmark_indexes, FixedIncome.list_unique_benchmark_indexes())
+      # |> load_securities()
 
     {:ok, socket}
   end
@@ -28,7 +32,8 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
     socket =
       socket
       |> assign(:filters, filters)
-      |> load_securities()
+      # Não carregar securities automaticamente ao mudar params
+      # |> load_securities()
 
     {:noreply, socket}
   end
@@ -37,9 +42,12 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
   def handle_event("apply_filters", params, socket) do
     filters = parse_filters(params)
 
+    # Carregar dados necessários apenas quando aplicar filtros
     socket =
       socket
-      |> push_patch(to: ~p"/analise-credito?#{filters}")
+      |> maybe_load_filter_options()
+      |> assign(:filters, filters)
+      |> load_securities()
 
     {:noreply, socket}
   end
@@ -91,11 +99,38 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
 
     socket =
       socket
+      |> maybe_load_filter_options()
       |> assign(:sort_by, field_atom)
       |> assign(:sort_order, new_order)
       |> load_securities()
 
     {:noreply, socket}
+  end
+
+  defp maybe_load_filter_options(socket) do
+    # Carregar opções de filtro apenas se ainda estiverem vazias
+    socket =
+      if Enum.empty?(socket.assigns.issuers) do
+        assign(socket, :issuers, FixedIncome.list_unique_issuers())
+      else
+        socket
+      end
+
+    socket =
+      if Enum.empty?(socket.assigns.credit_risks) do
+        assign(socket, :credit_risks, FixedIncome.list_unique_credit_risks())
+      else
+        socket
+      end
+
+    socket =
+      if Enum.empty?(socket.assigns.benchmark_indexes) do
+        assign(socket, :benchmark_indexes, FixedIncome.list_unique_benchmark_indexes())
+      else
+        socket
+      end
+
+    socket
   end
 
   defp load_securities(socket) do
