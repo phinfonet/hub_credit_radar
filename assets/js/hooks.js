@@ -72,13 +72,15 @@ export const EChartsHook = {
           const item = params.data;
           return `
             <div style="padding: 8px;">
-              <strong style="color: #0ADC7D;">${item.issuer}</strong><br/>
-              <strong>Código:</strong> ${item.code}<br/>
-              <strong>Duration:</strong> ${item.duration_years} anos (${item.duration} dias)<br/>
-              <strong>Rating Hub:</strong> ${item.rating_hub ? item.rating_hub.toFixed(2) : 'N/A'}<br/>
-              <strong>Grade:</strong> ${item.grade ? item.grade.toUpperCase() : 'N/A'}<br/>
-              <strong>Benchmark:</strong> ${item.benchmark_index || 'N/A'}<br/>
-              <strong>Tipo:</strong> ${item.security_type}<br/>
+              <strong style="color: #0ADC7D; font-size: 16px;">${item.credit_risk || 'N/A'}</strong><br/>
+              <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #374151;">
+                <strong>Código:</strong> ${item.code}<br/>
+                <strong>Duration:</strong> ${item.duration_years} anos (${item.duration} dias)<br/>
+                <strong>Rating Hub:</strong> ${item.rating_hub ? item.rating_hub.toFixed(2) : 'N/A'}<br/>
+                <strong>Grade:</strong> ${item.grade ? item.grade.toUpperCase() : 'N/A'}<br/>
+                <strong>Benchmark:</strong> ${item.benchmark_display || 'N/A'}<br/>
+                <strong>Tipo:</strong> ${item.security_type}<br/>
+              </div>
             </div>
           `;
         }
