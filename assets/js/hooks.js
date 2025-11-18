@@ -209,7 +209,14 @@ export const TomSelectHook = {
   },
 
   updated() {
-    // Reinitialize if select was destroyed
+    // Com phx-update="ignore", este hook NÃO deve ser chamado
+    // Se for chamado, verifica se a instância ainda é válida
+    if (this.select && this.select.input) {
+      // Instância válida, não fazer nada
+      return;
+    }
+
+    // Se a instância foi destruída ou é inválida, reinicializar
     if (!this.select) {
       this.initSelect();
     }
@@ -219,10 +226,17 @@ export const TomSelectHook = {
     const selectElement = this.el.querySelector('select');
     if (!selectElement) return;
 
+    // Verificar se já tem uma instância Tom Select ativa
+    if (selectElement.tomselect) {
+      this.select = selectElement.tomselect;
+      return;
+    }
+
     // Destroy existing instance if any
     if (this.select) {
       try {
         this.select.destroy();
+        this.select = null;
       } catch (e) {
         console.warn('Error destroying TomSelect:', e);
       }
@@ -231,25 +245,33 @@ export const TomSelectHook = {
     // Get current values before initialization
     const currentValues = Array.from(selectElement.selectedOptions).map(opt => opt.value);
 
-    this.select = new TomSelect(selectElement, {
-      plugins: ['remove_button', 'clear_button'],
-      maxOptions: null,
-      placeholder: 'Selecione...',
-      allowEmptyOption: true,
-      closeAfterSelect: false,
-      hidePlaceholder: false,
-      render: {
-        no_results: function(data, escape) {
-          return '<div class="no-results">Nenhum resultado encontrado para "' + escape(data.input) + '"</div>';
+    try {
+      this.select = new TomSelect(selectElement, {
+        plugins: ['remove_button', 'clear_button'],
+        maxOptions: null,
+        placeholder: 'Selecione...',
+        allowEmptyOption: true,
+        closeAfterSelect: false,
+        hidePlaceholder: false,
+        onDropdownOpen: function() {
+          // Prevent LiveView from interfering
+          this.dropdown.classList.add('ts-ignore-liveview');
         },
-      },
-      onInitialize: function() {
-        // Restore selected values after initialization
-        if (currentValues.length > 0) {
-          this.setValue(currentValues, true);
+        render: {
+          no_results: function(data, escape) {
+            return '<div class="no-results">Nenhum resultado encontrado para "' + escape(data.input) + '"</div>';
+          },
+        },
+        onInitialize: function() {
+          // Restore selected values after initialization
+          if (currentValues.length > 0) {
+            this.setValue(currentValues, true);
+          }
         }
-      }
-    });
+      });
+    } catch (e) {
+      console.error('Error initializing TomSelect:', e);
+    }
   },
 
   destroyed() {

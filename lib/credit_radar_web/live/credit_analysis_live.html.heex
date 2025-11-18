@@ -47,7 +47,7 @@
             <label class="block text-sm font-medium text-gray-300 mb-2">Tipo de Ativo</label>
             <select
               name="security_type"
-              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-default"
             >
               <option value="">Todos</option>
               <option value="cri" selected={@filters[:security_type] == "cri"}>CRI</option>
@@ -69,7 +69,7 @@
             <label class="block text-sm font-medium text-gray-300 mb-2">Benchmark Index</label>
             <select
               name="benchmark_index"
-              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-default"
             >
               <option value="">Todos</option>
               <%= for index <- @benchmark_indexes do %>
@@ -85,7 +85,7 @@
             <label class="block text-sm font-medium text-gray-300 mb-2">Grade</label>
             <select
               name="grade"
-              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-default"
             >
               <option value="">Todos</option>
               <option value="hy" selected={@filters[:grade] == "hy"}>HY</option>
@@ -98,7 +98,7 @@
             <label class="block text-sm font-medium text-gray-300 mb-2">Recomendação</label>
             <select
               name="recommendation"
-              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-default"
             >
               <option value="">Todos</option>
               <option value="enter" selected={@filters[:recommendation] == "enter"}>
