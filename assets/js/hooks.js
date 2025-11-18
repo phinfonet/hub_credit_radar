@@ -9,12 +9,15 @@ import TomSelect from 'tom-select';
  */
 export const EChartsHook = {
   mounted() {
-    // Ensure chart container is visible and has dimensions
-    if (this.el.offsetWidth === 0 || this.el.offsetHeight === 0) {
-      console.warn('Chart container has no dimensions, deferring initialization');
-      setTimeout(() => this.initChart(), 100);
-    } else {
-      this.initChart();
+    console.log('ECharts hook mounted');
+
+    // Initialize chart immediately
+    try {
+      this.chart = echarts.init(this.el);
+      console.log('ECharts initialized successfully');
+    } catch (e) {
+      console.error('Failed to initialize ECharts:', e);
+      return;
     }
 
     // Handle window resize
@@ -24,50 +27,17 @@ export const EChartsHook = {
       }
     };
     window.addEventListener('resize', this.resizeHandler);
-  },
 
-  initChart() {
-    if (!this.chart) {
+    // Listen for update events from LiveView
+    this.handleEvent("update-chart", ({data}) => {
+      console.log('Received update-chart event');
       try {
-        this.chart = echarts.init(this.el);
+        const chartData = JSON.parse(data);
+        this.updateChart(chartData);
       } catch (e) {
-        console.error('Failed to initialize ECharts:', e);
-        return;
+        console.error('Failed to parse chart data from event:', e);
       }
-    }
-
-    // Initial data from server
-    if (this.el.dataset.chartData) {
-      try {
-        const data = JSON.parse(this.el.dataset.chartData);
-        this.updateChart(data);
-      } catch (e) {
-        console.error('Failed to parse chart data:', e);
-      }
-    }
-  },
-
-  updated() {
-    // Ensure chart exists, reinitialize if needed
-    if (!this.chart || this.chart.isDisposed()) {
-      console.log('Chart was disposed, reinitializing...');
-      try {
-        this.chart = echarts.init(this.el);
-      } catch (e) {
-        console.error('Failed to reinitialize chart:', e);
-        return;
-      }
-    }
-
-    // Update chart when data changes
-    if (this.el.dataset.chartData) {
-      try {
-        const data = JSON.parse(this.el.dataset.chartData);
-        this.updateChart(data);
-      } catch (e) {
-        console.error('Failed to parse chart data:', e);
-      }
-    }
+    });
   },
 
   updateChart(data) {
@@ -82,13 +52,6 @@ export const EChartsHook = {
     }
 
     console.log(`Updating chart with ${data.series.length} data points`);
-
-    // IMPORTANTE: Se receber 0 data points, não atualizar o gráfico
-    // Isso previne o gráfico de desaparecer durante re-renders do LiveView
-    if (data.series.length === 0) {
-      console.log('Skipping chart update - empty data (preventing chart from disappearing)');
-      return;
-    }
 
     const option = {
       title: {
