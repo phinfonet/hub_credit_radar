@@ -83,6 +83,13 @@ export const EChartsHook = {
 
     console.log(`Updating chart with ${data.series.length} data points`);
 
+    // IMPORTANTE: Se receber 0 data points, não atualizar o gráfico
+    // Isso previne o gráfico de desaparecer durante re-renders do LiveView
+    if (data.series.length === 0) {
+      console.log('Skipping chart update - empty data (preventing chart from disappearing)');
+      return;
+    }
+
     const option = {
       title: {
         text: data.title || 'Análise de Crédito',
