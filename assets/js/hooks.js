@@ -9,12 +9,13 @@ import TomSelect from 'tom-select';
  */
 export const EChartsHook = {
   mounted() {
-    this.chart = echarts.init(this.el);
-
-    // Initial render
-    this.handleEvent("update-chart", (data) => {
-      this.updateChart(data);
-    });
+    // Ensure chart container is visible and has dimensions
+    if (this.el.offsetWidth === 0 || this.el.offsetHeight === 0) {
+      console.warn('Chart container has no dimensions, deferring initialization');
+      setTimeout(() => this.initChart(), 100);
+    } else {
+      this.initChart();
+    }
 
     // Handle window resize
     this.resizeHandler = () => {
@@ -23,6 +24,17 @@ export const EChartsHook = {
       }
     };
     window.addEventListener('resize', this.resizeHandler);
+  },
+
+  initChart() {
+    if (!this.chart) {
+      try {
+        this.chart = echarts.init(this.el);
+      } catch (e) {
+        console.error('Failed to initialize ECharts:', e);
+        return;
+      }
+    }
 
     // Initial data from server
     if (this.el.dataset.chartData) {
@@ -36,6 +48,17 @@ export const EChartsHook = {
   },
 
   updated() {
+    // Ensure chart exists, reinitialize if needed
+    if (!this.chart || this.chart.isDisposed()) {
+      console.log('Chart was disposed, reinitializing...');
+      try {
+        this.chart = echarts.init(this.el);
+      } catch (e) {
+        console.error('Failed to reinitialize chart:', e);
+        return;
+      }
+    }
+
     // Update chart when data changes
     if (this.el.dataset.chartData) {
       try {
@@ -48,7 +71,17 @@ export const EChartsHook = {
   },
 
   updateChart(data) {
-    if (!this.chart) return;
+    if (!this.chart) {
+      console.warn('Chart instance not found, cannot update');
+      return;
+    }
+
+    if (!data || !data.series) {
+      console.warn('No chart data or series provided');
+      return;
+    }
+
+    console.log(`Updating chart with ${data.series.length} data points`);
 
     const option = {
       title: {

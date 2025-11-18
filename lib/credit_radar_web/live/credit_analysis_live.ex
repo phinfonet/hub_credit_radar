@@ -47,7 +47,14 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
 
   @impl true
   def handle_event("clear_filters", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/analise-credito")}
+    # Limpar completamente os filtros e recarregar dados
+    socket =
+      socket
+      |> assign(:filters, %{})
+      |> assign(:selected_securities, MapSet.new())
+      |> load_securities()
+
+    {:noreply, socket}
   end
 
   @impl true
