@@ -80,24 +80,22 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
       {:error, :file_not_found}
     else
       try do
-        # Just read the file and enqueue jobs - no inline string extraction here
-        Logger.info("Reading XLSX file...")
+        # Stream the file row by row to avoid loading all rows in memory
+        Logger.info("Opening XLSX file for streaming...")
         {:ok, pid} = Xlsxir.multi_extract(file_path, 0)
-        rows = Xlsxir.get_list(pid)
 
-        Logger.info("Found #{length(rows)} total rows (including header)")
-
-        # Skip header and enqueue job for each row (with row data for later processing)
+        # Use stream_list to process row by row without loading everything in memory
         row_count =
-          rows
-          |> Enum.drop(1)
-          |> Enum.with_index(2)
+          pid
+          |> Xlsxir.stream_list()
+          |> Stream.drop(1)  # Skip header row
+          |> Stream.with_index(2)  # Start counting from row 2 (Excel row numbers)
           |> Enum.reduce(0, fn {row, row_index}, count ->
-            # Just enqueue with row index and numeric data - no inline strings yet
+            # Skip empty rows
             if Enum.all?(row, &is_nil/1) do
               count
             else
-              # Enqueue job with minimal data
+              # Enqueue job with row index and numeric data
               %{
                 row_index: row_index,
                 row_data: row,
@@ -113,7 +111,7 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
         Xlsxir.close(pid)
 
-        Logger.info("Enqueued #{row_count} row processing jobs")
+        Logger.info("Enqueued #{row_count} row processing jobs (streamed)")
 
         {:ok, row_count}
       rescue
