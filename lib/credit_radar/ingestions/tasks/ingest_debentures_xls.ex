@@ -56,6 +56,9 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
 
   import SweetXml
 
+  # Define CSV parser using NimbleCSV
+  NimbleCSV.define(CreditRadar.Ingestions.Tasks.IngestDebenturesXls.CSVParser, separator: ",", escape: "\"")
+
   def start_link({execution, file_path}) do
     Task.start_link(__MODULE__, :run, [execution, file_path])
   end
@@ -65,6 +68,8 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
 
   @doc """
   Executes the Debentures XLS ingestion pipeline.
+
+  Converts XLSX to CSV first (handles inline strings properly), then processes in batches.
   """
   def run(execution \\ nil, file_path) do
     Logger.info(
@@ -72,7 +77,11 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
     )
 
     result =
-      with {:ok, stats} <- parse_and_persist_file_in_batches(file_path, execution) do
+      with {:ok, csv_path} <- convert_xlsx_to_csv(file_path),
+           {:ok, stats} <- parse_and_persist_csv_in_batches(csv_path, execution) do
+        # Clean up CSV file
+        File.rm(csv_path)
+
         Logger.info("✅ Debentures XLS ingestion completed successfully: #{inspect(stats)}")
         _ = report_intermediate_progress(execution, 100)
         {:ok, stats}
@@ -86,7 +95,124 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   end
 
   @doc """
+  Converts XLSX to CSV using Python script.
+
+  This is far more memory-efficient than parsing XML inline strings.
+  """
+  defp convert_xlsx_to_csv(xlsx_path) do
+    csv_path = xlsx_path <> ".csv"
+    script_path = Path.join([:code.priv_dir(:credit_radar), "scripts", "xlsx_to_csv.py"])
+
+    Logger.info("Converting XLSX to CSV: #{xlsx_path} -> #{csv_path}")
+    Logger.info("Using script: #{script_path}")
+
+    case System.cmd("python3", [script_path, xlsx_path, csv_path], stderr_to_stdout: true) do
+      {output, 0} ->
+        Logger.info("✅ XLSX converted to CSV successfully: #{output}")
+        {:ok, csv_path}
+
+      {error_output, exit_code} ->
+        Logger.error("❌ Failed to convert XLSX to CSV (exit code: #{exit_code})")
+        Logger.error("Error output: #{error_output}")
+        {:error, {:conversion_failed, error_output}}
+    end
+  rescue
+    error ->
+      Logger.error("❌ Exception converting XLSX to CSV: #{inspect(error)}")
+      {:error, {:conversion_exception, error}}
+  end
+
+  @doc """
+  Parses and persists CSV file in batches to avoid OOM issues.
+
+  CSV is much more memory-efficient than XLSX XML parsing.
+  """
+  defp parse_and_persist_csv_in_batches(csv_path, execution) do
+    alias CreditRadar.Ingestions.Tasks.IngestDebenturesXls.CSVParser
+
+    unless File.exists?(csv_path) do
+      {:error, :file_not_found}
+    else
+      try do
+        # Count total rows for progress tracking (first pass)
+        total_rows =
+          csv_path
+          |> File.stream!()
+          |> Enum.count()
+
+        Logger.info("Found #{total_rows} rows in CSV (including header)")
+
+        # Stream and process in batches (second pass)
+        stats =
+          csv_path
+          |> File.stream!()
+          |> CSVParser.parse_stream(skip_headers: false)
+          |> Stream.drop(1)  # Skip header
+          |> Stream.with_index(2)  # Start at row 2 (1 is header)
+          |> Stream.chunk_every(@batch_size)
+          |> Stream.with_index(1)
+          |> Enum.reduce(%{created: 0, updated: 0, skipped: 0, errors: []}, fn {batch, batch_num}, acc ->
+            batch_start = (batch_num - 1) * @batch_size + 2
+            batch_end = batch_start + length(batch) - 1
+
+            Logger.info(
+              "Processing batch #{batch_num}: rows #{batch_start}-#{batch_end} of #{total_rows}"
+            )
+
+            # Parse batch
+            operations =
+              batch
+              |> Enum.map(fn {row, row_index} -> parse_csv_row(row, row_index) end)
+              |> Enum.reject(&is_nil/1)
+
+            Logger.info("Batch #{batch_num}: parsed #{length(operations)} operations")
+
+            # Persist batch
+            batch_stats = persist_batch(operations)
+
+            # Update progress
+            progress = min(100, div(batch_end * 100, total_rows))
+            _ = report_intermediate_progress(execution, progress)
+
+            # Merge stats
+            merged = %{
+              created: acc.created + batch_stats.created,
+              updated: acc.updated + batch_stats.updated,
+              skipped: acc.skipped + batch_stats.skipped,
+              errors: acc.errors ++ batch_stats.errors
+            }
+
+            # Force garbage collection after each batch to free memory
+            :erlang.garbage_collect()
+
+            Logger.info(
+              "Batch #{batch_num} complete - created: #{batch_stats.created}, updated: #{batch_stats.updated}, skipped: #{batch_stats.skipped}, errors: #{length(batch_stats.errors)}"
+            )
+
+            merged
+          end)
+
+        Logger.info(
+          "Debentures CSV ingestion completed - Total: created=#{stats.created}, updated=#{stats.updated}, skipped=#{stats.skipped}, errors=#{length(stats.errors)}"
+        )
+
+        case stats.errors do
+          [] -> {:ok, stats}
+          errors -> {:error, {:persistence_failed, errors}}
+        end
+      rescue
+        error ->
+          Logger.error("Failed to parse CSV file: #{inspect(error)}")
+          {:error, {:parse_error, error}}
+      end
+    end
+  end
+
+  @doc """
   Parses and persists the XLS/XLSX file in batches to avoid OOM issues.
+
+  NOTE: This function is deprecated in favor of CSV-based parsing.
+  Kept for backward compatibility.
   """
   defp parse_and_persist_file_in_batches(file_path, execution) do
     unless File.exists?(file_path) do
@@ -324,6 +450,74 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
 
     Logger.info("Extracted inline strings from #{map_size(result)} rows")
     result
+  end
+
+  @doc """
+  Parses a row from CSV file.
+
+  CSV columns correspond to the XLSX columns:
+  - Column A (index 0): reference_date
+  - Column B (index 1): code
+  - Column C (index 2): issuer
+  - Column D (index 3): correction_rate_type
+  - Column E (index 4): correction_rate
+  - Column F (index 5): maturity_date
+  - Column I (index 8): coupon_rate (Taxa indicativa)
+  - Column P (index 15): duration
+  - Column R (index 17): ntnb_reference
+  """
+  defp parse_csv_row(row, row_index) when is_list(row) and length(row) > 15 do
+    # Skip rows that are all empty
+    if Enum.all?(row, &(&1 == "" or is_nil(&1))) do
+      nil
+    else
+      # Extract data directly from CSV columns
+      reference_date = row |> Enum.at(0) |> parse_brazilian_date()
+      code = row |> Enum.at(1) |> to_string_safe()
+      issuer = row |> Enum.at(2) |> to_string_safe()
+      correction_rate_type = row |> Enum.at(3) |> to_string_safe()
+      correction_rate_str = row |> Enum.at(4) |> to_string_safe()
+      maturity_date = row |> Enum.at(5) |> parse_brazilian_date()
+      coupon_rate = row |> Enum.at(8) |> to_decimal()
+      duration = row |> Enum.at(15) |> to_decimal()
+      ntnb_reference_str = row |> Enum.at(17) |> to_string_safe()
+
+      # Parse ntnb_reference as date if it's not empty
+      ntnb_reference_date = parse_brazilian_date(ntnb_reference_str)
+
+      benchmark_index = determine_benchmark_index(ntnb_reference_date, correction_rate_type)
+
+      # Build the operation map with all data
+      attrs = %{
+        reference_date: reference_date,
+        security_type: :debenture,
+        code: code,
+        issuer: issuer,
+        credit_risk: issuer,
+        correction_rate_type: correction_rate_type,
+        correction_rate: correction_rate_str,
+        series: "ÚNICA",
+        issuing: "N/A",
+        maturity_date: maturity_date,
+        coupon_rate: coupon_rate,
+        duration: duration,
+        ntnb_reference_date: ntnb_reference_date,
+        benchmark_index: benchmark_index,
+        # Legacy field
+        ntnb_reference: ntnb_reference_str
+      }
+
+      attrs
+    end
+  rescue
+    error ->
+      Logger.warning("Failed to parse CSV row #{row_index}: #{inspect(error)}")
+      nil
+  end
+
+  defp parse_csv_row(row, row_index) do
+    Logger.warning("Skipping row #{row_index}: insufficient columns (#{length(row)})")
+    nil
   end
 
   defp parse_row_with_inline_str(row, row_index, inline_str_data)
