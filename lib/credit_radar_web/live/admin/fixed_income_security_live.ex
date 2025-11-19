@@ -175,6 +175,12 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     use Backpex.ResourceAction
     import Phoenix.LiveView, only: [put_flash: 3, push_navigate: 2]
 
+    alias CreditRadar.Ingestions
+    alias CreditRadar.Ingestions.Tasks.IngestDebenturesXls
+    alias CreditRadar.Repo
+
+    require Logger
+
     @impl Backpex.ResourceAction
     def title, do: "Upload XLS/XLSX"
 
