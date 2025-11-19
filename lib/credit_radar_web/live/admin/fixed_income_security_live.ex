@@ -219,7 +219,9 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     end
 
     @impl Backpex.ResourceAction
-    def handle(socket, _params) do
+    def handle(socket, params) do
+      Logger.info("🔵 UploadDebenturesXlsAction.handle called with params: #{inspect(params)}")
+
       {:ok,
        socket
        |> put_flash(
@@ -228,17 +230,39 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
        )}
     end
 
-    defp consume_upload(_, entry, %{path: path}, _) do
+    defp consume_upload(socket, entry, %{path: path}, action) do
+      Logger.info("🔵 UploadDebenturesXlsAction.consume_upload called")
+      Logger.info("🔵   - entry: #{inspect(entry)}")
+      Logger.info("🔵   - path: #{path}")
+
       uuid = Map.get(entry, :uuid, Ecto.UUID.generate())
       name = Map.get(entry, :client_name, "")
       dest = Path.join(System.tmp_dir!(), "#{uuid}#{Path.extname(name)}")
-      File.cp!(path, dest)
-      start_async_ingestion(dest)
-      {:ok, nil}
+
+      Logger.info("🔵 Copying file from #{path} to #{dest}")
+
+      try do
+        File.cp!(path, dest)
+        Logger.info("✅ File copied successfully to #{dest}")
+        Logger.info("🔵 File size: #{File.stat!(dest).size} bytes")
+        start_async_ingestion(dest)
+        Logger.info("✅ start_async_ingestion returned successfully")
+        {:ok, nil}
+      rescue
+        error ->
+          Logger.error("❌ Error in consume_upload: #{inspect(error)}")
+          Logger.error("❌ Stacktrace: #{inspect(__STACKTRACE__)}")
+          {:error, "Failed to process upload"}
+      end
     end
 
     defp start_async_ingestion(file_path) do
+      Logger.info("🔵 start_async_ingestion called with file_path: #{file_path}")
+      Logger.info("🔵 File exists? #{File.exists?(file_path)}")
+
       # Create execution record for tracking progress
+      Logger.info("🔵 Creating execution record with changeset...")
+
       execution_result =
         %Ingestions.Execution{}
         |> Ingestions.execution_create_changeset(%{
@@ -248,12 +272,15 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
         })
         |> Repo.insert()
 
+      Logger.info("🔵 Execution creation result: #{inspect(execution_result)}")
+
       case execution_result do
         {:ok, execution} ->
-          Logger.info("📋 Created execution ##{execution.id} for Debentures XLS upload")
+          Logger.info("✅ Created execution ##{execution.id} for Debentures XLS upload")
+          Logger.info("🔵 Starting Task.Supervisor.start_child...")
 
-          Task.Supervisor.start_child(CreditRadar.Ingestions.TaskSupervisor, fn ->
-            Logger.info("⏳ Starting to process Debentures XLS file: #{file_path}")
+          task_result = Task.Supervisor.start_child(CreditRadar.Ingestions.TaskSupervisor, fn ->
+            Logger.info("🔵 Inside Task - starting to process Debentures XLS file: #{file_path}")
 
             # Mark execution as running
             case Ingestions.execution_update_changeset(execution, %{
@@ -347,11 +374,18 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
             end
           end)
 
+          Logger.info("🔵 Task.Supervisor.start_child result: #{inspect(task_result)}")
+
         {:error, changeset} ->
-          Logger.error("❌ Failed to create execution for upload: #{inspect(changeset.errors)}")
-          Logger.error("Changeset: #{inspect(changeset)}")
+          Logger.error("❌ Failed to create execution for upload")
+          Logger.error("❌   - Errors: #{inspect(changeset.errors)}")
+          Logger.error("❌   - Changes: #{inspect(changeset.changes)}")
+          Logger.error("❌   - Params: #{inspect(changeset.params)}")
+          Logger.error("❌   - Full changeset: #{inspect(changeset)}")
           File.rm(file_path)
       end
+
+      Logger.info("🔵 start_async_ingestion completed")
     end
   end
 end
