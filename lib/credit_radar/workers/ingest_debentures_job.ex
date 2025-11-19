@@ -71,10 +71,10 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   end
 
   @doc """
-  Parses XLSX file and processes all rows directly in this job.
+  Parses XLSX file and processes all rows directly in this job using streaming.
 
-  Instead of creating 5850+ individual jobs (which causes OOM),
-  processes all rows in a single job to minimize memory overhead.
+  Uses Xlsxir.stream_list/3 for true lazy streaming without loading all rows.
+  Processes rows one-by-one to minimize memory usage on 1GB RAM.
   """
   defp parse_and_enqueue_rows(file_path, execution_id) do
     unless File.exists?(file_path) do
@@ -91,22 +91,15 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         xml_file_path = extract_sheet_xml_to_file(file_path, tmp_dir)
         Logger.info("Extracted sheet1.xml to: #{xml_file_path}")
 
-        # Open XLSX with XlsxReader
-        Logger.info("Opening XLSX with XlsxReader...")
-        {:ok, package} = XlsxReader.open(file_path)
+        # Stream XLSX with Xlsxir - TRUE lazy streaming
+        Logger.info("Streaming XLSX with Xlsxir.stream_list...")
 
-        # Get first sheet
-        sheet_names = XlsxReader.sheet_names(package)
-        Logger.info("Found sheets: #{inspect(sheet_names)}")
-
-        {:ok, rows} = XlsxReader.sheet(package, Enum.at(sheet_names, 0))
-        Logger.info("Read #{length(rows)} rows total")
-
-        # Process all rows directly (skip header)
+        # Process all rows with streaming (skip header)
         {created, updated, skipped, errors} =
-          rows
-          |> Enum.drop(1)  # Skip header
-          |> Enum.with_index(2)  # Start from row 2
+          file_path
+          |> Xlsxir.stream_list(0)  # Sheet index 0, returns Stream
+          |> Stream.drop(1)  # Skip header row
+          |> Stream.with_index(2)  # Start from row 2
           |> Enum.reduce({0, 0, 0, 0}, fn {row_data, row_index}, {c, u, s, e} ->
             # Extract inline strings for this row
             inline_str_data = ProcessDebentureRowJob.extract_inline_str_for_row(xml_file_path, row_index)
