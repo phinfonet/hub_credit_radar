@@ -118,11 +118,13 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         Logger.info("Enqueuing #{row_count} jobs in batches...")
 
         # Process in small batches to avoid OOM (1GB RAM constraint)
+        # Use Stream to avoid loading all row indices in memory at once
         batch_size = 50
 
-        2..(row_count + 1)
-        |> Enum.chunk_every(batch_size)
-        |> Enum.each(fn batch ->
+        Stream.iterate(2, &(&1 + 1))
+        |> Stream.take(row_count)
+        |> Stream.chunk_every(batch_size)
+        |> Stream.each(fn batch ->
           # Build jobs for this batch
           jobs =
             Enum.map(batch, fn row_index ->
@@ -141,6 +143,7 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
           Logger.info("Enqueued batch (#{length(batch)} jobs), total so far: #{List.last(batch) - 1}")
         end)
+        |> Stream.run()
 
         # Store total job count in ETS for cleanup tracking
         :ets.insert(table_name, {:total_jobs, row_count})
