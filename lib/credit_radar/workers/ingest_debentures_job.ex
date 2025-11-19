@@ -71,10 +71,10 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   end
 
   @doc """
-  Parses XLSX file and processes all rows directly in this job using streaming.
+  Parses XLSX file and enqueues jobs in batches using streaming.
 
-  Uses Xlsxir.stream_list/3 for true lazy streaming without loading all rows.
-  Processes rows one-by-one to minimize memory usage on 1GB RAM.
+  Uses Xlsxir.stream_list for true lazy streaming, chunks into batches,
+  and enqueues jobs with Oban.insert_all to minimize memory pressure.
   """
   defp parse_and_enqueue_rows(file_path, execution_id) do
     unless File.exists?(file_path) do
@@ -91,53 +91,51 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         xml_file_path = extract_sheet_xml_to_file(file_path, tmp_dir)
         Logger.info("Extracted sheet1.xml to: #{xml_file_path}")
 
-        # Stream XLSX with Xlsxir - TRUE lazy streaming
+        # Create ETS table to share XML file path with row jobs
+        table_name = :"debentures_xml_#{execution_id}"
+        :ets.new(table_name, [:named_table, :public, :set])
+        :ets.insert(table_name, {:xml_file_path, xml_file_path})
+        Logger.info("Created ETS table: #{table_name}")
+
+        # Stream XLSX and enqueue jobs in batches
         Logger.info("Streaming XLSX with Xlsxir.stream_list...")
 
-        # Process all rows with streaming (skip header)
-        {created, updated, skipped, errors} =
+        row_count =
           file_path
           |> Xlsxir.stream_list(0)  # Sheet index 0, returns Stream
           |> Stream.drop(1)  # Skip header row
           |> Stream.with_index(2)  # Start from row 2
-          |> Enum.reduce({0, 0, 0, 0}, fn {row_data, row_index}, {c, u, s, e} ->
-            # Extract inline strings for this row
-            inline_str_data = ProcessDebentureRowJob.extract_inline_str_for_row(xml_file_path, row_index)
+          |> Stream.chunk_every(100)  # Process in batches of 100
+          |> Stream.each(fn chunk ->
+            # Create jobs for this batch
+            jobs =
+              Enum.map(chunk, fn {row_data, row_index} ->
+                ProcessDebentureRowJob.new(%{
+                  row_index: row_index,
+                  row_data: row_data,
+                  ets_table: Atom.to_string(table_name),
+                  execution_id: execution_id
+                })
+              end)
 
-            # Parse and persist
-            parsed_data = ProcessDebentureRowJob.parse_row(row_data, row_index, inline_str_data)
+            # Insert batch
+            Oban.insert_all(jobs)
 
-            result = ProcessDebentureRowJob.persist_debenture(parsed_data)
+            # GC and sleep between batches
+            :erlang.garbage_collect()
+            Process.sleep(50)
 
-            # Update counters based on result
-            {new_c, new_u, new_s, new_e} = case result do
-              {:ok, :created} -> {c + 1, u, s, e}
-              {:ok, :updated} -> {c, u + 1, s, e}
-              {:skip, _} -> {c, u, s + 1, e}
-              {:error, _} -> {c, u, s, e + 1}
-            end
-
-            # Periodic GC and logging
-            total = new_c + new_u + new_s + new_e
-            if rem(total, 50) == 0 do
-              :erlang.garbage_collect()
-
-              if rem(total, 200) == 0 do
-                Logger.info("Processed #{total} rows so far (created: #{new_c}, updated: #{new_u}, skipped: #{new_s}, errors: #{new_e})")
-              end
-            end
-
-            {new_c, new_u, new_s, new_e}
+            Logger.info("Enqueued batch of #{length(jobs)} jobs")
           end)
+          |> Enum.reduce(0, fn _, acc -> acc + 100 end)
 
-        # Cleanup temp files
-        File.rm_rf!(tmp_dir)
-        Logger.info("Cleaned up temp directory: #{tmp_dir}")
+        Logger.info("Enqueued #{row_count} jobs total")
 
-        total_processed = created + updated + skipped + errors
-        Logger.info("Completed processing #{total_processed} rows: created=#{created}, updated=#{updated}, skipped=#{skipped}, errors=#{errors}")
+        # Store total job count in ETS for cleanup tracking
+        :ets.insert(table_name, {:total_jobs, row_count})
+        :ets.insert(table_name, {:completed_jobs, 0})
 
-        {:ok, total_processed}
+        {:ok, row_count}
       rescue
         error ->
           Logger.error("Failed to parse XLSX file: #{inspect(error)}")
