@@ -115,23 +115,32 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
         # Enqueue jobs with ONLY row_index (no row_data to avoid OOM)
         # Each job will open the XLSX and read only its row
-        Logger.info("Enqueuing #{row_count} jobs...")
+        Logger.info("Enqueuing #{row_count} jobs in batches...")
 
-        for row_index <- 2..(row_count + 1) do
-          %{
-            row_index: row_index,
-            ets_table: Atom.to_string(table_name),
-            execution_id: execution_id
-          }
-          |> ProcessDebentureRowJob.new()
-          |> Oban.insert!()
+        # Process in small batches to avoid OOM (1GB RAM constraint)
+        batch_size = 50
 
-          # GC every 100 jobs
-          if rem(row_index, 100) == 0 do
-            :erlang.garbage_collect()
-            Logger.info("Enqueued #{row_index - 1} jobs so far...")
-          end
-        end
+        2..(row_count + 1)
+        |> Enum.chunk_every(batch_size)
+        |> Enum.each(fn batch ->
+          # Build jobs for this batch
+          jobs =
+            Enum.map(batch, fn row_index ->
+              ProcessDebentureRowJob.new(%{
+                row_index: row_index,
+                ets_table: Atom.to_string(table_name),
+                execution_id: execution_id
+              })
+            end)
+
+          # Insert batch using insert_all (more efficient)
+          Oban.insert_all(jobs)
+
+          # Force GC after each batch
+          :erlang.garbage_collect()
+
+          Logger.info("Enqueued batch (#{length(batch)} jobs), total so far: #{List.last(batch) - 1}")
+        end)
 
         # Store total job count in ETS for cleanup tracking
         :ets.insert(table_name, {:total_jobs, row_count})
