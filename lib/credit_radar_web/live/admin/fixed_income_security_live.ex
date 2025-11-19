@@ -176,7 +176,7 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     import Phoenix.LiveView, only: [put_flash: 3, push_navigate: 2]
 
     alias CreditRadar.Ingestions
-    alias CreditRadar.Ingestions.Tasks.IngestDebenturesXls
+    alias CreditRadar.Workers.IngestDebenturesJob
     alias CreditRadar.Repo
 
     require Logger
@@ -257,11 +257,11 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     end
 
     defp start_async_ingestion(file_path) do
-      Logger.info("🔵 start_async_ingestion called with file_path: #{file_path}")
-      Logger.info("🔵 File exists? #{File.exists?(file_path)}")
+      Logger.info("🟢 start_async_ingestion called with file_path: #{file_path}")
+      Logger.info("🟢 File exists? #{File.exists?(file_path)}")
 
       # Create execution record for tracking progress
-      Logger.info("🔵 Creating execution record with changeset...")
+      Logger.info("🟢 Creating execution record...")
 
       execution_result =
         %Ingestions.Execution{}
@@ -272,120 +272,36 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
         })
         |> Repo.insert()
 
-      Logger.info("🔵 Execution creation result: #{inspect(execution_result)}")
-
       case execution_result do
         {:ok, execution} ->
           Logger.info("✅ Created execution ##{execution.id} for Debentures XLS upload")
-          Logger.info("🔵 Starting Task.Supervisor.start_child...")
+          Logger.info("🟢 Enqueuing Oban job...")
 
-          task_result = Task.Supervisor.start_child(CreditRadar.Ingestions.TaskSupervisor, fn ->
-            Logger.info("🔵 Inside Task - starting to process Debentures XLS file: #{file_path}")
+          # Enqueue Oban job to process the file
+          job_result =
+            %{execution_id: execution.id, file_path: file_path}
+            |> IngestDebenturesJob.new()
+            |> Oban.insert()
 
-            # Mark execution as running
-            case Ingestions.execution_update_changeset(execution, %{
-                   status: "running",
-                   started_at: DateTime.utc_now(),
-                   progress: 0
-                 })
-                 |> Repo.update() do
-              {:ok, execution} ->
-                # Broadcast start
-                Phoenix.PubSub.broadcast(
-                  CreditRadar.PubSub,
-                  "execution:#{execution.id}",
-                  {:execution_updated, execution}
-                )
+          case job_result do
+            {:ok, job} ->
+              Logger.info("✅ Oban job ##{job.id} enqueued for execution ##{execution.id}")
 
-                Phoenix.PubSub.broadcast(
-                  CreditRadar.PubSub,
-                  "executions:updates",
-                  {:execution_updated, execution}
-                )
-
-                try do
-                  case IngestDebenturesXls.run(execution, file_path) do
-                    {:ok, stats} ->
-                      total = stats.created + stats.updated
-
-                      Logger.info(
-                        "✅ Debentures XLS ingestion completed successfully: #{total} títulos (#{stats.created} novos, #{stats.updated} atualizados, #{stats.skipped} pulados)"
-                      )
-
-                      # Mark execution as completed
-                      case Ingestions.execution_update_changeset(execution, %{
-                             status: "completed",
-                             finished_at: DateTime.utc_now(),
-                             progress: 100
-                           })
-                           |> Repo.update() do
-                        {:ok, execution} ->
-                          # Broadcast completion
-                          Phoenix.PubSub.broadcast(
-                            CreditRadar.PubSub,
-                            "execution:#{execution.id}",
-                            {:execution_updated, execution}
-                          )
-
-                          Phoenix.PubSub.broadcast(
-                            CreditRadar.PubSub,
-                            "executions:updates",
-                            {:execution_updated, execution}
-                          )
-
-                        {:error, reason} ->
-                          Logger.error("Failed to mark execution as completed: #{inspect(reason)}")
-                      end
-
-                    {:error, reason} ->
-                      Logger.error("Failed to process Debentures XLS file: #{inspect(reason)}")
-
-                      # Mark execution as failed
-                      case Ingestions.execution_update_changeset(execution, %{
-                             status: "failed",
-                             finished_at: DateTime.utc_now()
-                           })
-                           |> Repo.update() do
-                        {:ok, execution} ->
-                          # Broadcast failure
-                          Phoenix.PubSub.broadcast(
-                            CreditRadar.PubSub,
-                            "execution:#{execution.id}",
-                            {:execution_updated, execution}
-                          )
-
-                          Phoenix.PubSub.broadcast(
-                            CreditRadar.PubSub,
-                            "executions:updates",
-                            {:execution_updated, execution}
-                          )
-
-                        {:error, reason} ->
-                          Logger.error("Failed to mark execution as failed: #{inspect(reason)}")
-                      end
-                  end
-                after
-                  File.rm(file_path)
-                end
-
-              {:error, reason} ->
-                Logger.error("Failed to mark execution as running: #{inspect(reason)}")
-                File.rm(file_path)
-            end
-          end)
-
-          Logger.info("🔵 Task.Supervisor.start_child result: #{inspect(task_result)}")
+            {:error, reason} ->
+              Logger.error("❌ Failed to enqueue Oban job: #{inspect(reason)}")
+              # Clean up execution and file on error
+              Repo.delete(execution)
+              File.rm(file_path)
+          end
 
         {:error, changeset} ->
           Logger.error("❌ Failed to create execution for upload")
           Logger.error("❌   - Errors: #{inspect(changeset.errors)}")
-          Logger.error("❌   - Changes: #{inspect(changeset.changes)}")
-          Logger.error("❌   - Params: #{inspect(changeset.params)}")
           Logger.error("❌   - Full changeset: #{inspect(changeset)}")
           File.rm(file_path)
       end
 
-      Logger.info("🔵 start_async_ingestion completed")
+      Logger.info("🟢 start_async_ingestion completed")
     end
   end
 end

@@ -73,7 +73,8 @@ defmodule CreditRadar.MixProject do
       {:xlsxir, "~> 1.6"},
       {:sweet_xml, "~> 0.7"},
       {:aws_rds_castore, "~> 1.2"},
-      {:bcrypt_elixir, "~> 3.0"}
+      {:bcrypt_elixir, "~> 3.0"},
+      {:oban, "~> 2.18"}
     ]
   end
 
