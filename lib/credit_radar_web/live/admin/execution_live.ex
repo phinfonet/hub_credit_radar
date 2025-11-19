@@ -68,28 +68,21 @@ defmodule CreditRadarWeb.Live.Admin.ExecutionLive do
   def can?(_assigns, action, _item) when action in [:edit, :update, :delete], do: false
   def can?(_assigns, _action, _item), do: true
 
-  # Mount callback to subscribe to execution updates
+  # Handle async info messages to subscribe to PubSub after mount
   @impl Phoenix.LiveView
-  def mount(params, session, socket) do
-    # Call parent mount first
-    socket = super(params, session, socket)
-
+  def handle_info(:after_mount, socket) do
     # Subscribe to a general executions topic for all updates
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(CreditRadar.PubSub, "executions:updates")
-      Logger.debug("Subscribed to executions:updates")
-    end
-
-    {:ok, socket}
+    Phoenix.PubSub.subscribe(CreditRadar.PubSub, "executions:updates")
+    Logger.debug("Subscribed to executions:updates")
+    {:noreply, socket}
   end
 
   # Handle PubSub messages for execution updates
-  @impl Phoenix.LiveView
   def handle_info({:execution_updated, execution}, socket) do
     Logger.debug("Received execution update for ##{execution.id}: #{execution.status} - #{execution.progress}%")
 
-    # Send a message to trigger Backpex to reload data
-    send(self(), :reload_items)
+    # Trigger a process to reload items
+    Process.send_after(self(), :reload_items, 100)
 
     {:noreply, socket}
   end
@@ -100,7 +93,19 @@ defmodule CreditRadarWeb.Live.Admin.ExecutionLive do
   end
 
   def handle_info(msg, socket) do
-    # Let Backpex handle other messages
-    super(msg, socket)
+    # Ignore unknown messages
+    Logger.debug("Ignoring unknown message: #{inspect(msg)}")
+    {:noreply, socket}
+  end
+
+  # Use on_mount callback to schedule PubSub subscription
+  @impl Backpex.LiveResource
+  def init_assigns(socket, _live_action) do
+    # Schedule PubSub subscription after mount
+    if connected?(socket) do
+      send(self(), :after_mount)
+    end
+
+    socket
   end
 end
