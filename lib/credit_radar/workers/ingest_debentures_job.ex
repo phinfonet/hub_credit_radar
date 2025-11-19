@@ -100,28 +100,37 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
         Logger.info("Got #{length(rows)} rows from XLSX (including header)")
 
-        # Enqueue jobs for each row
+        # Enqueue jobs in batches to avoid OOM
+        batch_size = 250
+
         row_count =
           rows
           |> Enum.drop(1)  # Skip header row
           |> Enum.with_index(2)  # Start counting from row 2 (Excel row numbers)
-          |> Enum.reduce(0, fn {row, row_index}, count ->
-            # Skip empty rows
-            if Enum.all?(row, &is_nil/1) do
-              count
-            else
-              # Enqueue job with numeric data + reference to ETS table
-              %{
-                row_index: row_index,
-                row_data: row,
-                ets_table: Atom.to_string(table_name),
-                execution_id: execution_id
-              }
-              |> ProcessDebentureRowJob.new()
-              |> Oban.insert!()
+          |> Enum.reject(fn {row, _} -> Enum.all?(row, &is_nil/1) end)  # Remove empty rows
+          |> Enum.chunk_every(batch_size)
+          |> Enum.reduce(0, fn batch, total_count ->
+            # Enqueue batch
+            batch_count =
+              Enum.reduce(batch, 0, fn {row, row_index}, count ->
+                %{
+                  row_index: row_index,
+                  row_data: row,
+                  ets_table: Atom.to_string(table_name),
+                  execution_id: execution_id
+                }
+                |> ProcessDebentureRowJob.new()
+                |> Oban.insert!()
 
-              count + 1
-            end
+                count + 1
+              end)
+
+            Logger.info("Enqueued batch of #{batch_count} jobs (total so far: #{total_count + batch_count})")
+
+            # Force GC after each batch
+            :erlang.garbage_collect()
+
+            total_count + batch_count
           end)
 
         # Store total job count in ETS for cleanup tracking
