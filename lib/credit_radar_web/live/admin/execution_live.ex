@@ -10,6 +10,8 @@ defmodule CreditRadarWeb.Live.Admin.ExecutionLive do
     ],
     layout: {CreditRadarWeb.Layouts, :admin}
 
+  import Phoenix.LiveView, only: [connected?: 1, push_event: 3]
+
   require Logger
 
   @impl Backpex.LiveResource
