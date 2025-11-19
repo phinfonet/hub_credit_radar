@@ -246,16 +246,43 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   end
 
   defp extract_inline_str_cells(file_path) do
-    # Extract only the sheet1.xml file from the XLSX (avoid loading entire file in memory)
-    {:ok, files} = :zip.unzip(String.to_charlist(file_path), [:memory])
+    # Extract ONLY sheet1.xml from the XLSX to avoid loading entire file in memory
+    # Using :file_list option to find the file first, then extract only that one
+    charlist_path = String.to_charlist(file_path)
 
-    # Find the sheet1.xml file
-    {_, sheet_xml} =
-      Enum.find(files, fn {name, _} ->
-        List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
+    # Get list of files in the ZIP without extracting
+    {:ok, file_list} = :zip.list_dir(charlist_path)
+
+    # Find sheet1.xml in the list
+    sheet_file =
+      Enum.find(file_list, fn
+        {:zip_file, name, _info, _comment, _offset, _comp_size} ->
+          List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
+        _ -> false
       end)
 
-    # Parse all rows and extract inlineStr values
+    case sheet_file do
+      {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
+        # Extract ONLY this specific file
+        {:ok, [{^sheet_name, sheet_xml}]} = :zip.extract(charlist_path, [
+          {:file_list, [sheet_name]},
+          :memory
+        ])
+
+        # Parse the extracted XML
+        parse_inline_str_xml(sheet_xml)
+
+      nil ->
+        Logger.warning("Could not find sheet1.xml in XLSX file")
+        %{}
+    end
+  rescue
+    error ->
+      Logger.warning("Failed to extract inlineStr cells: #{inspect(error)}")
+      %{}
+  end
+
+  defp parse_inline_str_xml(sheet_xml) do
     result =
       sheet_xml
       |> xpath(~x"//row"l,
@@ -293,10 +320,6 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
 
     Logger.info("Extracted inline strings from #{map_size(result)} rows")
     result
-  rescue
-    error ->
-      Logger.warning("Failed to extract inlineStr cells: #{inspect(error)}")
-      %{}
   end
 
   defp parse_row_with_inline_str(row, row_index, inline_str_data)
