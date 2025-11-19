@@ -103,53 +103,20 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         :ets.insert(table_name, {:xlsx_file_path, xlsx_copy_path})
         Logger.info("Copied XLSX to: #{xlsx_copy_path}")
 
-        # Get row count WITHOUT loading all rows into memory
-        Logger.info("Counting rows in XLSX...")
+        # Enqueue jobs ONE BY ONE without loading all rows into memory
+        # Don't even count total rows - just iterate through ETS table
+        Logger.info("Opening XLSX and enqueuing jobs one by one...")
+
         {:ok, pid} = Xlsxir.multi_extract(file_path, 0)
 
-        # Get table info to count rows (Xlsxir uses ETS internally)
-        row_count = :ets.info(pid, :size) - 1  # Subtract header
+        # Get first key to start iteration
+        first_key = :ets.first(pid)
+
+        row_count = enqueue_jobs_from_ets(pid, first_key, 2, table_name, execution_id, 0)
 
         Xlsxir.close(pid)
-        Logger.info("Found #{row_count} data rows (excluding header)")
 
-        # Enqueue jobs with ONLY row_index (no row_data to avoid OOM)
-        # Each job will open the XLSX and read only its row
-        Logger.info("Enqueuing #{row_count} jobs in batches...")
-
-        # Process in VERY small batches to avoid OOM (1GB RAM is extremely tight)
-        # Use Stream to avoid loading all row indices in memory at once
-        batch_size = 10
-
-        Stream.iterate(2, &(&1 + 1))
-        |> Stream.take(row_count)
-        |> Stream.chunk_every(batch_size)
-        |> Stream.each(fn batch ->
-          # Build jobs for this batch
-          jobs =
-            Enum.map(batch, fn row_index ->
-              ProcessDebentureRowJob.new(%{
-                row_index: row_index,
-                ets_table: Atom.to_string(table_name),
-                execution_id: execution_id
-              })
-            end)
-
-          # Insert batch using insert_all (more efficient)
-          Oban.insert_all(jobs)
-
-          # Force GC after each batch
-          :erlang.garbage_collect()
-
-          # Small sleep to allow GC to actually free memory
-          Process.sleep(5)
-
-          # Log every 100 jobs
-          if rem(List.last(batch), 100) == 0 do
-            Logger.info("Enqueued #{List.last(batch) - 1} jobs so far...")
-          end
-        end)
-        |> Stream.run()
+        Logger.info("Enqueued #{row_count} jobs total")
 
         # Store total job count in ETS for cleanup tracking
         :ets.insert(table_name, {:total_jobs, row_count})
@@ -208,6 +175,42 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
     end
   end
 
+  # Recursively iterate through ETS table and enqueue jobs one by one
+  # This avoids loading row count or creating lists/streams in memory
+  defp enqueue_jobs_from_ets(_pid, :'$end_of_table', _row_idx, _table_name, _execution_id, count) do
+    Logger.info("Reached end of ETS table, total jobs enqueued: #{count}")
+    count
+  end
+
+  defp enqueue_jobs_from_ets(pid, key, row_idx, table_name, execution_id, count) do
+    # Skip header (row 1)
+    if key == 1 do
+      next_key = :ets.next(pid, key)
+      enqueue_jobs_from_ets(pid, next_key, row_idx, table_name, execution_id, count)
+    else
+      # Enqueue single job for this row
+      ProcessDebentureRowJob.new(%{
+        row_index: row_idx,
+        ets_table: Atom.to_string(table_name),
+        execution_id: execution_id
+      })
+      |> Oban.insert!()
+
+      # Periodic GC and logging to manage memory
+      if rem(count, 50) == 0 do
+        :erlang.garbage_collect()
+        Process.sleep(10)
+
+        if rem(count, 200) == 0 do
+          Logger.info("Enqueued #{count} jobs so far...")
+        end
+      end
+
+      # Continue iteration
+      next_key = :ets.next(pid, key)
+      enqueue_jobs_from_ets(pid, next_key, row_idx + 1, table_name, execution_id, count + 1)
+    end
+  end
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(30)
