@@ -10,6 +10,7 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
 
   alias CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive
   alias CreditRadar.Ingestions.Tasks.IngestCriCraXls
+  alias CreditRadar.Ingestions.Tasks.IngestDebenturesXls
 
   require Logger
 
@@ -78,6 +79,9 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     [
       upload_xls: %{
         module: __MODULE__.UploadXlsAction
+      },
+      upload_debentures_xls: %{
+        module: __MODULE__.UploadDebenturesXlsAction
       }
     ]
   end
@@ -157,6 +161,89 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
 
             {:error, reason} ->
               Logger.error("Failed to process XLS file: #{inspect(reason)}")
+          end
+        after
+          File.rm(file_path)
+        end
+      end)
+    end
+  end
+
+  defmodule UploadDebenturesXlsAction do
+    use Backpex.ResourceAction
+    import Phoenix.LiveView, only: [put_flash: 3, push_navigate: 2]
+
+    @impl Backpex.ResourceAction
+    def title, do: "Upload XLS/XLSX"
+
+    @impl Backpex.ResourceAction
+    def label, do: "Upload Debêntures"
+
+    @impl Backpex.ResourceAction
+    def fields do
+      [
+        file: %{
+          module: Backpex.Fields.Upload,
+          label: "Arquivo XLS/XLSX",
+          type: :upload,
+          upload_key: :file,
+          accept: ~w(.xls .xlsx),
+          max_entries: 1,
+          required: true,
+          list_existing_files: fn _item -> [] end,
+          put_upload_change: fn _socket,
+                                params,
+                                _item,
+                                _uploaded_entries,
+                                _removed_entries,
+                                _action ->
+            params
+          end,
+          consume_upload: &consume_upload/4,
+          remove_uploads: fn _socket, _item, _field_name -> {:ok, []} end
+        }
+      ]
+    end
+
+    @impl Backpex.ResourceAction
+    def changeset(change, attrs, _metadata) do
+      Ecto.Changeset.cast(change, attrs, [:file])
+    end
+
+    @impl Backpex.ResourceAction
+    def handle(socket, _params) do
+      {:ok,
+       socket
+       |> put_flash(
+         :info,
+         "📤 Upload recebido! Estamos processando em segundo plano. Você pode navegar e acompanhar em Execuções."
+       )}
+    end
+
+    defp consume_upload(_, entry, %{path: path}, _) do
+      uuid = Map.get(entry, :uuid, Ecto.UUID.generate())
+      name = Map.get(entry, :client_name, "")
+      dest = Path.join(System.tmp_dir!(), "#{uuid}#{Path.extname(name)}")
+      File.cp!(path, dest)
+      start_async_ingestion(dest)
+      {:ok, nil}
+    end
+
+    defp start_async_ingestion(file_path) do
+      Task.Supervisor.start_child(CreditRadar.Ingestions.TaskSupervisor, fn ->
+        Logger.info("⏳ Starting to process Debentures XLS file: #{file_path}")
+
+        try do
+          case IngestDebenturesXls.run(nil, file_path) do
+            {:ok, stats} ->
+              total = stats.created + stats.updated
+
+              Logger.info(
+                "✅ Debentures XLS ingestion completed successfully: #{total} títulos (#{stats.created} novos, #{stats.updated} atualizados, #{stats.skipped} pulados)"
+              )
+
+            {:error, reason} ->
+              Logger.error("Failed to process Debentures XLS file: #{inspect(reason)}")
           end
         after
           File.rm(file_path)

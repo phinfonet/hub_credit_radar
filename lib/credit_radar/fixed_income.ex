@@ -9,6 +9,7 @@ defmodule CreditRadar.FixedIncome do
     Assessment,
     CDIHistory,
     CDIProjection,
+    IGPMProjection,
     IPCAProjection,
     Security,
     SelicHistory
@@ -60,6 +61,13 @@ defmodule CreditRadar.FixedIncome do
   """
   def ipca_projection_changeset(projection \\ %IPCAProjection{}, attrs, _metadata \\ []) do
     IPCAProjection.changeset(projection, normalize_reference_month(attrs))
+  end
+
+  @doc """
+  Builds a changeset for persisting IGP-M projections.
+  """
+  def igp_m_projection_changeset(projection \\ %IGPMProjection{}, attrs, _metadata \\ []) do
+    IGPMProjection.changeset(projection, normalize_reference_month(attrs))
   end
 
   @doc """

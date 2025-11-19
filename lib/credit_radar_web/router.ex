@@ -70,6 +70,7 @@ defmodule CreditRadarWeb.Router do
 
       live_resources "/cdi_projections", Live.Admin.CDIProjectionLive
       live_resources "/ipca_projections", Live.Admin.IPCAProjectionLive
+      live_resources "/igp_m_projections", Live.Admin.IGPMProjectionLive
     end
 
     backpex_routes()
