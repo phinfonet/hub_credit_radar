@@ -246,40 +246,10 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   end
 
   defp extract_inline_str_cells(file_path) do
-    # Extract ONLY sheet1.xml from the XLSX to avoid loading entire file in memory
-    # Using :file_list option to find the file first, then extract only that one
-    charlist_path = String.to_charlist(file_path)
-
-    # Get list of files in the ZIP without extracting
-    {:ok, file_list} = :zip.list_dir(charlist_path)
-
-    # Find sheet1.xml in the list
-    sheet_file =
-      Enum.find(file_list, fn
-        {:zip_file, name, _info, _comment, _offset, _comp_size} ->
-          List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
-        _ -> false
-      end)
-
-    case sheet_file do
-      {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
-        # Extract ONLY this specific file
-        {:ok, [{^sheet_name, sheet_xml}]} = :zip.extract(charlist_path, [
-          {:file_list, [sheet_name]},
-          :memory
-        ])
-
-        # Parse the extracted XML
-        parse_inline_str_xml(sheet_xml)
-
-      nil ->
-        Logger.warning("Could not find sheet1.xml in XLSX file")
-        %{}
-    end
-  rescue
-    error ->
-      Logger.warning("Failed to extract inlineStr cells: #{inspect(error)}")
-      %{}
+    # TEMPORARY: Disable inline string extraction to avoid OOM
+    # This means we won't get some cell values, but it will prevent crashes
+    Logger.warning("⚠️  Inline string extraction DISABLED to prevent OOM - some data may be missing")
+    %{}
   end
 
   defp parse_inline_str_xml(sheet_xml) do
