@@ -11,12 +11,24 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   - A: Data de referência (reference_date)
   - B: Código (code)
   - C: Emissor (issuer)
-  - D: Tipo de remuneração (correction_rate_type)
-  - E: Taxa de correção (correction_rate)
+  - D: Tipo Remuneração (correction_rate_type)
+  - E: Remuneração (correction_rate)
   - F: Data de vencimento (maturity_date)
-  - G: Taxa indicativa (coupon_rate)
-  - H: Duration (dias úteis) (duration)
-  - I: Referência NTN-B (ntnb_reference)
+  - G: Taxa de compra (buy_rate)
+  - H: Taxa de venda (sell_rate)
+  - I: Taxa indicativa (coupon_rate)
+  - J: PU Indicativo
+  - K: Desvio padrão
+  - L: Intervalo indicativo mínimo
+  - M: Intervalo indicativo máximo
+  - N: % PU par
+  - O: % VNE
+  - P: Duration (dias úteis) (duration)
+  - Q: % Reúne
+  - R: Referência NTN-B (ntnb_reference)
+  - S: Z-Spread
+  - T: VNA
+  - U: PU Par
 
   ## Usage
 
@@ -169,7 +181,7 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   end
 
   defp parse_row_with_inline_str(row, row_index, inline_str_data)
-       when is_list(row) and length(row) > 5 do
+       when is_list(row) and length(row) > 15 do
     # Skip rows that are all nil
     if Enum.all?(row, &is_nil/1) do
       nil
@@ -177,18 +189,23 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
       # Get inlineStr data for this row
       row_inline_data = Map.get(inline_str_data, row_index, %{})
 
-      # Extract data from inlineStr cells (columns A-I)
+      # Extract data from inlineStr cells (columns A-F, R)
       reference_date = row_inline_data |> Map.get("A") |> parse_brazilian_date()
       code = row_inline_data |> Map.get("B") |> to_string_safe()
       issuer = row_inline_data |> Map.get("C") |> to_string_safe()
       correction_rate_type = row_inline_data |> Map.get("D") |> to_string_safe()
+      correction_rate_str = row_inline_data |> Map.get("E") |> to_string_safe()
+      maturity_date = row_inline_data |> Map.get("F") |> parse_brazilian_date()
+      ntnb_reference_str = row_inline_data |> Map.get("R") |> to_string_safe()
 
-      # Extract numeric data from xlsxir (columns E onwards)
-      correction_rate = row |> Enum.at(4) |> to_decimal()
-      maturity_date = row |> Enum.at(5) |> parse_brazilian_date()
-      coupon_rate = row |> Enum.at(6) |> to_decimal()
-      duration = row |> Enum.at(7) |> to_decimal()
-      ntnb_reference_date = row |> Enum.at(8) |> parse_brazilian_date()
+      # Extract numeric data from xlsxir
+      # Column I (index 8): Taxa indicativa (coupon_rate)
+      # Column P (index 15): Duration
+      coupon_rate = row |> Enum.at(8) |> to_decimal()
+      duration = row |> Enum.at(15) |> to_decimal()
+
+      # Parse ntnb_reference as date if it's not empty
+      ntnb_reference_date = parse_brazilian_date(ntnb_reference_str)
 
       benchmark_index = determine_benchmark_index(ntnb_reference_date, correction_rate_type)
 
@@ -200,7 +217,7 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
         issuer: issuer,
         credit_risk: issuer,
         correction_rate_type: correction_rate_type,
-        correction_rate: correction_rate,
+        correction_rate: correction_rate_str,
         series: "ÚNICA",
         issuing: "N/A",
         maturity_date: maturity_date,
@@ -209,7 +226,7 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
         ntnb_reference_date: ntnb_reference_date,
         benchmark_index: benchmark_index,
         # Legacy field
-        ntnb_reference: benchmark_index
+        ntnb_reference: ntnb_reference_str
       }
 
       attrs
