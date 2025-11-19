@@ -80,12 +80,17 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
       {:error, :file_not_found}
     else
       try do
+        # Create temp directory
+        tmp_dir = "/tmp/debentures-#{execution_id}"
+        File.mkdir_p!(tmp_dir)
+        Logger.info("Created temporary directory: #{tmp_dir}")
+
         # Extract sheet1.xml to temporary file (avoids loading entire XML in memory)
         Logger.info("Extracting sheet1.xml to temporary file...")
-        xml_file_path = extract_sheet_xml_to_file(file_path, execution_id)
+        xml_file_path = extract_sheet_xml_to_file(file_path, tmp_dir)
         Logger.info("Extracted sheet1.xml to: #{xml_file_path}")
 
-        # Create ETS table to share XML file path with row jobs
+        # Create ETS table to share file paths with row jobs
         table_name = :"debentures_xml_#{execution_id}"
         :ets.new(table_name, [:named_table, :public, :set])
         :ets.insert(table_name, {:xml_file_path, xml_file_path})
@@ -144,7 +149,7 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   end
 
   # Extract sheet1.xml to a temporary file to avoid loading entire XML in memory
-  defp extract_sheet_xml_to_file(file_path, execution_id) do
+  defp extract_sheet_xml_to_file(file_path, tmp_dir) do
     charlist_path = String.to_charlist(file_path)
     {:ok, file_list} = :zip.list_dir(charlist_path)
 
@@ -160,7 +165,7 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
       {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
         Logger.info("Extracting #{List.to_string(sheet_name)} to memory first...")
 
-        # Extract to memory first (only sheet1.xml, ~10MB)
+        # Extract to memory first (only sheet1.xml, ~5-10MB)
         {:ok, [{^sheet_name, sheet_xml_content}]} =
           :zip.extract(charlist_path, [
             {:file_list, [sheet_name]},
@@ -169,10 +174,7 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
         Logger.info("Extracted #{byte_size(sheet_xml_content)} bytes to memory")
 
-        # Now save to file for jobs to read
-        tmp_dir = "/tmp/debentures-#{execution_id}"
-        File.mkdir_p!(tmp_dir)
-
+        # Save to file for jobs to read
         xml_path = Path.join(tmp_dir, "sheet1.xml")
         File.write!(xml_path, sheet_xml_content)
 
