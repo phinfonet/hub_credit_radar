@@ -106,6 +106,20 @@ if config_env() == :prod do
 
   config :credit_radar, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # Configure allowed origins for WebSocket connections
+  # Supports both the configured host and AWS ELB endpoints
+  check_origin =
+    case System.get_env("CHECK_ORIGIN") do
+      "false" -> false
+      origins when is_binary(origins) ->
+        String.split(origins, ",") |> Enum.map(&String.trim/1)
+      _ ->
+        [
+          "//#{host}",
+          "//credit-tracker-1380171241.us-east-2.elb.amazonaws.com"
+        ]
+    end
+
   config :credit_radar, CreditRadarWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
@@ -116,7 +130,8 @@ if config_env() == :prod do
       ip: {0, 0, 0, 0, 0, 0, 0, 0},
       port: port
     ],
-    secret_key_base: secret_key_base
+    secret_key_base: secret_key_base,
+    check_origin: check_origin
 
   # ## SSL Support
   #

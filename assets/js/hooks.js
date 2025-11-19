@@ -9,12 +9,16 @@ import TomSelect from 'tom-select';
  */
 export const EChartsHook = {
   mounted() {
-    this.chart = echarts.init(this.el);
+    console.log('ECharts hook mounted');
 
-    // Initial render
-    this.handleEvent("update-chart", (data) => {
-      this.updateChart(data);
-    });
+    // Initialize chart immediately
+    try {
+      this.chart = echarts.init(this.el);
+      console.log('ECharts initialized successfully');
+    } catch (e) {
+      console.error('Failed to initialize ECharts:', e);
+      return;
+    }
 
     // Handle window resize
     this.resizeHandler = () => {
@@ -24,31 +28,30 @@ export const EChartsHook = {
     };
     window.addEventListener('resize', this.resizeHandler);
 
-    // Initial data from server
-    if (this.el.dataset.chartData) {
+    // Listen for update events from LiveView
+    this.handleEvent("update-chart", ({data}) => {
+      console.log('Received update-chart event');
       try {
-        const data = JSON.parse(this.el.dataset.chartData);
-        this.updateChart(data);
+        const chartData = JSON.parse(data);
+        this.updateChart(chartData);
       } catch (e) {
-        console.error('Failed to parse chart data:', e);
+        console.error('Failed to parse chart data from event:', e);
       }
-    }
-  },
-
-  updated() {
-    // Update chart when data changes
-    if (this.el.dataset.chartData) {
-      try {
-        const data = JSON.parse(this.el.dataset.chartData);
-        this.updateChart(data);
-      } catch (e) {
-        console.error('Failed to parse chart data:', e);
-      }
-    }
+    });
   },
 
   updateChart(data) {
-    if (!this.chart) return;
+    if (!this.chart) {
+      console.warn('Chart instance not found, cannot update');
+      return;
+    }
+
+    if (!data || !data.series) {
+      console.warn('No chart data or series provided');
+      return;
+    }
+
+    console.log(`Updating chart with ${data.series.length} data points`);
 
     const option = {
       title: {
@@ -72,13 +75,15 @@ export const EChartsHook = {
           const item = params.data;
           return `
             <div style="padding: 8px;">
-              <strong style="color: #0ADC7D;">${item.issuer}</strong><br/>
-              <strong>Código:</strong> ${item.code}<br/>
-              <strong>Duration:</strong> ${item.duration_years} anos (${item.duration} dias)<br/>
-              <strong>Rating Hub:</strong> ${item.rating_hub ? item.rating_hub.toFixed(2) : 'N/A'}<br/>
-              <strong>Grade:</strong> ${item.grade ? item.grade.toUpperCase() : 'N/A'}<br/>
-              <strong>Benchmark:</strong> ${item.benchmark_index || 'N/A'}<br/>
-              <strong>Tipo:</strong> ${item.security_type}<br/>
+              <strong style="color: #0ADC7D; font-size: 16px;">${item.credit_risk || 'N/A'}</strong><br/>
+              <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #374151;">
+                <strong>Código:</strong> ${item.code}<br/>
+                <strong>Duration:</strong> ${item.duration_years} anos (${item.duration} dias)<br/>
+                <strong>Rating Hub:</strong> ${item.rating_hub ? item.rating_hub.toFixed(2) : 'N/A'}<br/>
+                <strong>Grade:</strong> ${item.grade ? item.grade.toUpperCase() : 'N/A'}<br/>
+                <strong>Benchmark:</strong> ${item.benchmark_display || 'N/A'}<br/>
+                <strong>Tipo:</strong> ${item.security_type}<br/>
+              </div>
             </div>
           `;
         }
@@ -209,7 +214,14 @@ export const TomSelectHook = {
   },
 
   updated() {
-    // Reinitialize if select was destroyed
+    // Com phx-update="ignore", este hook NÃO deve ser chamado
+    // Se for chamado, verifica se a instância ainda é válida
+    if (this.select && this.select.input) {
+      // Instância válida, não fazer nada
+      return;
+    }
+
+    // Se a instância foi destruída ou é inválida, reinicializar
     if (!this.select) {
       this.initSelect();
     }
@@ -219,10 +231,17 @@ export const TomSelectHook = {
     const selectElement = this.el.querySelector('select');
     if (!selectElement) return;
 
+    // Verificar se já tem uma instância Tom Select ativa
+    if (selectElement.tomselect) {
+      this.select = selectElement.tomselect;
+      return;
+    }
+
     // Destroy existing instance if any
     if (this.select) {
       try {
         this.select.destroy();
+        this.select = null;
       } catch (e) {
         console.warn('Error destroying TomSelect:', e);
       }
@@ -231,25 +250,33 @@ export const TomSelectHook = {
     // Get current values before initialization
     const currentValues = Array.from(selectElement.selectedOptions).map(opt => opt.value);
 
-    this.select = new TomSelect(selectElement, {
-      plugins: ['remove_button', 'clear_button'],
-      maxOptions: null,
-      placeholder: 'Selecione...',
-      allowEmptyOption: true,
-      closeAfterSelect: false,
-      hidePlaceholder: false,
-      render: {
-        no_results: function(data, escape) {
-          return '<div class="no-results">Nenhum resultado encontrado para "' + escape(data.input) + '"</div>';
+    try {
+      this.select = new TomSelect(selectElement, {
+        plugins: ['remove_button', 'clear_button'],
+        maxOptions: null,
+        placeholder: 'Selecione...',
+        allowEmptyOption: true,
+        closeAfterSelect: false,
+        hidePlaceholder: false,
+        onDropdownOpen: function() {
+          // Prevent LiveView from interfering
+          this.dropdown.classList.add('ts-ignore-liveview');
         },
-      },
-      onInitialize: function() {
-        // Restore selected values after initialization
-        if (currentValues.length > 0) {
-          this.setValue(currentValues, true);
+        render: {
+          no_results: function(data, escape) {
+            return '<div class="no-results">Nenhum resultado encontrado para "' + escape(data.input) + '"</div>';
+          },
+        },
+        onInitialize: function() {
+          // Restore selected values after initialization
+          if (currentValues.length > 0) {
+            this.setValue(currentValues, true);
+          }
         }
-      }
-    });
+      });
+    } catch (e) {
+      console.error('Error initializing TomSelect:', e);
+    }
   },
 
   destroyed() {

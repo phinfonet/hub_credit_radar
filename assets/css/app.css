@@ -155,3 +155,35 @@
   background-color: #ef4444;
   border-left-color: #dc2626;
 }
+
+/* Remove caret/cursor piscando de selects normais */
+select {
+  caret-color: transparent;
+  -webkit-appearance: menulist;
+  -moz-appearance: menulist;
+  appearance: menulist;
+}
+
+select:focus {
+  caret-color: transparent;
+}
+
+/* Remove seleção de texto em selects */
+select option {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+}
+
+/* TomSelect - Manter cursor no input de busca mas com cor apropriada */
+.ts-control input {
+  caret-color: #0adc7d;
+}
+
+.ts-control input:focus {
+  caret-color: #0adc7d;
+}
+
+.ts-control input::placeholder {
+  caret-color: transparent;
+}

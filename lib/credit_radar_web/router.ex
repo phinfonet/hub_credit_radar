@@ -30,12 +30,14 @@ defmodule CreditRadarWeb.Router do
     get "/", PageController, :home
     get "/login", AuthController, :new
     post "/login", AuthController, :create
+
+    # Análise de crédito - sem autenticação (temporário)
+    live "/analise-credito", Live.CreditAnalysisLive
   end
 
   scope "/", CreditRadarWeb do
     pipe_through [:browser, :browser_protected]
 
-    live "/analise-credito", Live.CreditAnalysisLive
     delete "/logout", AuthController, :delete
   end
 

@@ -18,7 +18,17 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
       |> assign(:sort_order, :asc)
       |> load_securities()
 
+    # Send initial chart data after mount
+    if connected?(socket) do
+      Process.send_after(self(), :push_initial_chart, 100)
+    end
+
     {:ok, socket}
+  end
+
+  @impl true
+  def handle_info(:push_initial_chart, socket) do
+    {:noreply, push_chart_update(socket)}
   end
 
   @impl true
@@ -29,6 +39,7 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
       socket
       |> assign(:filters, filters)
       |> load_securities()
+      |> push_chart_update()
 
     {:noreply, socket}
   end
@@ -39,14 +50,24 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
 
     socket =
       socket
-      |> push_patch(to: ~p"/analise-credito?#{filters}")
+      |> assign(:filters, filters)
+      |> load_securities()
+      |> push_chart_update()
 
     {:noreply, socket}
   end
 
   @impl true
   def handle_event("clear_filters", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/analise-credito")}
+    # Limpar completamente os filtros e recarregar dados
+    socket =
+      socket
+      |> assign(:filters, %{})
+      |> assign(:selected_securities, MapSet.new())
+      |> load_securities()
+      |> push_chart_update()
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -61,18 +82,34 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
         MapSet.put(selected, security_id)
       end
 
-    {:noreply, assign(socket, :selected_securities, new_selected)}
+    socket =
+      socket
+      |> assign(:selected_securities, new_selected)
+      |> push_chart_update()
+
+    {:noreply, socket}
   end
 
   @impl true
   def handle_event("select_all", _params, socket) do
     all_ids = socket.assigns.securities |> Enum.map(& &1.id) |> MapSet.new()
-    {:noreply, assign(socket, :selected_securities, all_ids)}
+
+    socket =
+      socket
+      |> assign(:selected_securities, all_ids)
+      |> push_chart_update()
+
+    {:noreply, socket}
   end
 
   @impl true
   def handle_event("deselect_all", _params, socket) do
-    {:noreply, assign(socket, :selected_securities, MapSet.new())}
+    socket =
+      socket
+      |> assign(:selected_securities, MapSet.new())
+      |> push_chart_update()
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -94,6 +131,7 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
       |> assign(:sort_by, field_atom)
       |> assign(:sort_order, new_order)
       |> load_securities()
+      |> push_chart_update()
 
     {:noreply, socket}
   end
@@ -106,6 +144,11 @@ defmodule CreditRadarWeb.Live.CreditAnalysisLive do
       |> sort_securities(socket.assigns.sort_by, socket.assigns.sort_order)
 
     assign(socket, :securities, securities)
+  end
+
+  defp push_chart_update(socket) do
+    chart_json = chart_data(socket.assigns.securities, socket.assigns.selected_securities)
+    push_event(socket, "update-chart", %{data: chart_json})
   end
 
   defp sort_securities(securities, field, order) do
