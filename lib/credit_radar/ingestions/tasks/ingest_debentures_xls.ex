@@ -299,10 +299,20 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
       correction_rate_type
       |> normalize_remuneration()
       |> case do
+        # CRI/CRA patterns
         "di aditivo" -> "di_plus"
         "di multiplicativo" -> "di_multiple"
         type when type in ["cdi", "di"] -> "cdi"
+
+        # Debentures patterns
+        "di spread" -> "di_plus"
+        "di percentual" -> "di_multiple"
+        "ipca spread" -> "ipca"
+        "igp-m" -> "igp_m"
+
+        # Generic fallback
         "ipca" -> "ipca"
+
         _ -> nil
       end
     end
