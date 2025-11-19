@@ -31,10 +31,10 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
     [{:xml_file_path, xml_file_path}] = :ets.lookup(ets_table, :xml_file_path)
 
     # Extract inline strings for THIS row only from XML file
-    inline_str_data = extract_inline_str_for_row_from_file(xml_file_path, row_index)
+    inline_str_data = extract_inline_str_for_row(xml_file_path, row_index)
 
     # Parse row data combining numeric data + inline strings
-    parsed_data = parse_row_data(row_data, row_index, inline_str_data)
+    parsed_data = parse_row(row_data, row_index, inline_str_data)
 
     result = persist_debenture(parsed_data)
 
@@ -60,8 +60,11 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
     end
   end
 
-  # Extract inline strings for a specific row from the XML file (memory efficient)
-  defp extract_inline_str_for_row_from_file(xml_file_path, row_index) do
+  @doc """
+  Extract inline strings for a specific row from XML file.
+  Public helper for direct row processing.
+  """
+  def extract_inline_str_for_row(xml_file_path, row_index) do
     import SweetXml
 
     # Read XML file and extract only this specific row
@@ -129,7 +132,11 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
     end
   end
 
-  defp parse_row_data(row, _row_index, inline_str_data) when is_list(row) and length(row) > 15 do
+  @doc """
+  Parse row data combining XLSX numeric data and XML inline strings.
+  Public helper for direct row processing.
+  """
+  def parse_row(row, _row_index, inline_str_data) when is_list(row) and length(row) > 15 do
     # Extract data from inline strings
     reference_date = inline_str_data |> Map.get("A") |> parse_brazilian_date()
     code = inline_str_data |> Map.get("B") |> to_string_safe()
@@ -167,7 +174,7 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
     }
   end
 
-  defp parse_row_data(_row, _row_index, _inline_str_data), do: nil
+  def parse_row(_row, _row_index, _inline_str_data), do: nil
 
   defp to_string_safe(nil), do: ""
   defp to_string_safe(value) when is_binary(value), do: String.trim(value)
@@ -224,7 +231,11 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
 
   defp determine_benchmark_index(_ntnb_reference_date, _correction_rate_type), do: nil
 
-  defp persist_debenture(attrs) do
+  @doc """
+  Persist debenture to database (create or update).
+  Public helper for direct row processing.
+  """
+  def persist_debenture(attrs) do
     # Validate required fields
     unless attrs["code"] && attrs["issuer"] && attrs["code"] != "" && attrs["issuer"] != "" do
       {:skip, :missing_required_fields}
