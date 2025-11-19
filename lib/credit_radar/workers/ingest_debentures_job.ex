@@ -92,46 +92,41 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         :ets.insert(table_name, {:total_jobs, 0})
         Logger.info("Created ETS table: #{table_name}")
 
-        # Read XLSX file rows (numeric data only)
-        Logger.info("Opening XLSX file...")
+        # Copy XLSX to temp dir for jobs to access
+        xlsx_copy_path = Path.join(tmp_dir, "source.xlsx")
+        File.cp!(file_path, xlsx_copy_path)
+        :ets.insert(table_name, {:xlsx_file_path, xlsx_copy_path})
+        Logger.info("Copied XLSX to: #{xlsx_copy_path}")
+
+        # Get row count WITHOUT loading all rows into memory
+        Logger.info("Counting rows in XLSX...")
         {:ok, pid} = Xlsxir.multi_extract(file_path, 0)
-        rows = Xlsxir.get_list(pid)
+
+        # Get table info to count rows (Xlsxir uses ETS internally)
+        row_count = :ets.info(pid, :size) - 1  # Subtract header
+
         Xlsxir.close(pid)
+        Logger.info("Found #{row_count} data rows (excluding header)")
 
-        Logger.info("Got #{length(rows)} rows from XLSX (including header)")
+        # Enqueue jobs with ONLY row_index (no row_data to avoid OOM)
+        # Each job will open the XLSX and read only its row
+        Logger.info("Enqueuing #{row_count} jobs...")
 
-        # Enqueue jobs in batches to avoid OOM
-        batch_size = 250
+        for row_index <- 2..(row_count + 1) do
+          %{
+            row_index: row_index,
+            ets_table: Atom.to_string(table_name),
+            execution_id: execution_id
+          }
+          |> ProcessDebentureRowJob.new()
+          |> Oban.insert!()
 
-        row_count =
-          rows
-          |> Enum.drop(1)  # Skip header row
-          |> Enum.with_index(2)  # Start counting from row 2 (Excel row numbers)
-          |> Enum.reject(fn {row, _} -> Enum.all?(row, &is_nil/1) end)  # Remove empty rows
-          |> Enum.chunk_every(batch_size)
-          |> Enum.reduce(0, fn batch, total_count ->
-            # Enqueue batch
-            batch_count =
-              Enum.reduce(batch, 0, fn {row, row_index}, count ->
-                %{
-                  row_index: row_index,
-                  row_data: row,
-                  ets_table: Atom.to_string(table_name),
-                  execution_id: execution_id
-                }
-                |> ProcessDebentureRowJob.new()
-                |> Oban.insert!()
-
-                count + 1
-              end)
-
-            Logger.info("Enqueued batch of #{batch_count} jobs (total so far: #{total_count + batch_count})")
-
-            # Force GC after each batch
+          # GC every 100 jobs
+          if rem(row_index, 100) == 0 do
             :erlang.garbage_collect()
-
-            total_count + batch_count
-          end)
+            Logger.info("Enqueued #{row_index - 1} jobs so far...")
+          end
+        end
 
         # Store total job count in ETS for cleanup tracking
         :ets.insert(table_name, {:total_jobs, row_count})

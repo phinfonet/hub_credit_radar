@@ -19,19 +19,22 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
   def perform(%Oban.Job{
         args: %{
           "row_index" => row_index,
-          "row_data" => row_data,
           "ets_table" => ets_table_str,
           "execution_id" => execution_id
         }
       }) do
     Logger.debug("Processing debenture row ##{row_index} for execution ##{execution_id}")
 
-    # Get XML file path from ETS table
+    # Get file paths from ETS table
     ets_table = String.to_atom(ets_table_str)
     [{:xml_file_path, xml_file_path}] = :ets.lookup(ets_table, :xml_file_path)
+    [{:xlsx_file_path, xlsx_file_path}] = :ets.lookup(ets_table, :xlsx_file_path)
 
     # Extract inline strings for THIS row only from XML file
     inline_str_data = extract_inline_str_for_row_from_file(xml_file_path, row_index)
+
+    # Read numeric data for THIS row only from XLSX file
+    row_data = read_row_from_xlsx(xlsx_file_path, row_index)
 
     # Parse row data combining numeric data + inline strings
     parsed_data = parse_row_data(row_data, row_index, inline_str_data)
@@ -58,6 +61,25 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
         Logger.error("Failed to persist row ##{row_index}: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  # Read numeric data for a specific row from XLSX file (memory efficient)
+  defp read_row_from_xlsx(xlsx_file_path, row_index) do
+    {:ok, pid} = Xlsxir.multi_extract(xlsx_file_path, 0)
+
+    # Xlsxir stores data in ETS - fetch only this row
+    row_data = :ets.lookup(pid, row_index)
+
+    Xlsxir.close(pid)
+
+    case row_data do
+      [{^row_index, row}] -> row
+      [] -> []
+    end
+  rescue
+    error ->
+      Logger.error("Failed to read row #{row_index} from XLSX: #{inspect(error)}")
+      []
   end
 
   # Extract inline strings for a specific row from the XML file (memory efficient)
