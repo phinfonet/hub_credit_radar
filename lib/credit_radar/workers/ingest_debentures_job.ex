@@ -92,16 +92,19 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         :ets.insert(table_name, {:total_jobs, 0})
         Logger.info("Created ETS table: #{table_name}")
 
-        # Stream the file row by row to avoid loading all rows in memory
-        Logger.info("Opening XLSX file for streaming...")
+        # Read XLSX file rows (numeric data only)
+        Logger.info("Opening XLSX file...")
         {:ok, pid} = Xlsxir.multi_extract(file_path, 0)
+        rows = Xlsxir.get_list(pid)
+        Xlsxir.close(pid)
 
-        # Use stream_list to process row by row without loading everything in memory
+        Logger.info("Got #{length(rows)} rows from XLSX (including header)")
+
+        # Enqueue jobs for each row
         row_count =
-          pid
-          |> Xlsxir.stream_list()
-          |> Stream.drop(1)  # Skip header row
-          |> Stream.with_index(2)  # Start counting from row 2 (Excel row numbers)
+          rows
+          |> Enum.drop(1)  # Skip header row
+          |> Enum.with_index(2)  # Start counting from row 2 (Excel row numbers)
           |> Enum.reduce(0, fn {row, row_index}, count ->
             # Skip empty rows
             if Enum.all?(row, &is_nil/1) do
@@ -120,8 +123,6 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
               count + 1
             end
           end)
-
-        Xlsxir.close(pid)
 
         # Store total job count in ETS for cleanup tracking
         :ets.insert(table_name, {:total_jobs, row_count})
