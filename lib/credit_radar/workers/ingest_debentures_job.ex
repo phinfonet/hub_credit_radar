@@ -157,17 +157,25 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         tmp_dir = "/tmp/debentures-#{execution_id}"
         File.mkdir_p!(tmp_dir)
 
-        charlist_tmp_dir = String.to_charlist(tmp_dir)
+        Logger.info("Extracting #{List.to_string(sheet_name)} to #{tmp_dir}")
 
-        {:ok, _} = :zip.extract(charlist_path, [
+        # Extract using :zip.extract with proper options
+        case :zip.extract(charlist_path, [
           {:file_list, [sheet_name]},
-          {:cwd, charlist_tmp_dir}
-        ])
+          {:cwd, String.to_charlist(tmp_dir)}
+        ]) do
+          {:ok, extracted_files} ->
+            Logger.info("Successfully extracted files: #{inspect(extracted_files)}")
 
-        # Return path to extracted XML file
-        xml_path = Path.join(tmp_dir, List.to_string(sheet_name))
-        Logger.info("Sheet XML extracted to: #{xml_path}, size: #{File.stat!(xml_path).size} bytes")
-        xml_path
+            # Return path to extracted XML file
+            xml_path = Path.join(tmp_dir, List.to_string(sheet_name))
+            Logger.info("Sheet XML extracted to: #{xml_path}, size: #{File.stat!(xml_path).size} bytes")
+            xml_path
+
+          {:error, reason} ->
+            Logger.error("Failed to extract XML: #{inspect(reason)}")
+            raise "Failed to extract sheet1.xml: #{inspect(reason)}"
+        end
 
       nil ->
         raise "Could not find sheet1.xml in XLSX file"
