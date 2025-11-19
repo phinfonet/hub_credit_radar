@@ -266,9 +266,9 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
       execution_result =
         %Ingestions.Execution{}
         |> Ingestions.execution_create_changeset(%{
-          kind: "debentures",
-          trigger: "upload",
-          status: "pending"
+          "kind" => "debentures",
+          "trigger" => "upload",
+          "status" => "pending"
         })
         |> Repo.insert()
 
