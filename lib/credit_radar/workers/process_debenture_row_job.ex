@@ -3,7 +3,7 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
   Oban worker for processing a single debenture row.
 
   This job is enqueued by IngestDebenturesJob for each row in the XLSX file.
-  Receives row data from ElixirXlsx streaming and inline strings from XML file.
+  Receives row data from XlsxReader and inline strings from XML file.
   Processing rows individually avoids OOM issues with large files.
   """
   use Oban.Worker, queue: :debenture_rows, max_attempts: 3

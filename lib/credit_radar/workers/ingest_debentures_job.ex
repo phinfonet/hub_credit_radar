@@ -71,9 +71,9 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   end
 
   @doc """
-  Parses XLSX file and enqueues a job for each row using TRUE streaming.
+  Parses XLSX file and enqueues a job for each row.
 
-  Uses ElixirXlsx for memory-efficient streaming instead of loading entire file.
+  Uses XlsxReader for cleaner API and better type handling.
   """
   defp parse_and_enqueue_rows(file_path, execution_id) do
     unless File.exists?(file_path) do
@@ -97,26 +97,25 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         :ets.insert(table_name, {:total_jobs, 0})
         Logger.info("Created ETS table: #{table_name}")
 
-        # Stream XLSX with ElixirXlsx - TRUE streaming without loading all data
-        Logger.info("Opening XLSX with ElixirXlsx for streaming...")
+        # Open XLSX with XlsxReader
+        Logger.info("Opening XLSX with XlsxReader...")
+        {:ok, package} = XlsxReader.open(file_path)
 
-        {:ok, xlsx} = Elixir.Xlsx.open(file_path)
+        # Get first sheet (index 0)
+        sheet_names = XlsxReader.sheet_names(package)
+        Logger.info("Found sheets: #{inspect(sheet_names)}")
 
-        # Get first sheet
-        [sheet | _] = Elixir.Xlsx.sheets(xlsx)
+        {:ok, rows} = XlsxReader.sheet(package, Enum.at(sheet_names, 0))
 
-        Logger.info("Streaming rows and enqueuing jobs one by one...")
+        Logger.info("Read #{length(rows)} rows, enqueuing jobs...")
 
-        # Stream rows, skip header, enqueue one job at a time
-        # Since we're streaming, we can safely pass row_data in args without OOM
+        # Skip header and enqueue jobs
         row_count =
-          sheet
-          |> Elixir.Xlsx.stream()
-          |> Stream.drop(1)  # Skip header
-          |> Stream.with_index(2)  # Start from row 2 (after header)
+          rows
+          |> Enum.drop(1)  # Skip header
+          |> Enum.with_index(2)  # Start from row 2
           |> Enum.reduce(0, fn {row_data, row_index}, count ->
             # Enqueue single job with row data
-            # Safe to pass row_data because we're creating jobs one at a time via streaming
             ProcessDebentureRowJob.new(%{
               row_index: row_index,
               row_data: row_data,
@@ -137,8 +136,6 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
             count + 1
           end)
-
-        Elixir.Xlsx.close(xlsx)
 
         Logger.info("Enqueued #{row_count} jobs total")
 

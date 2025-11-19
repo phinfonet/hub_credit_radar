@@ -71,7 +71,7 @@ defmodule CreditRadar.MixProject do
       {:backpex, "~> 0.16.0"},
       {:nimble_csv, "~> 1.2"},
       {:xlsxir, "~> 1.6"},
-      {:elixir_xlsx, "~> 0.6.0"},
+      {:xlsx_reader, "~> 0.8.0"},
       {:sweet_xml, "~> 0.7"},
       {:aws_rds_castore, "~> 1.2"},
       {:bcrypt_elixir, "~> 3.0"},
