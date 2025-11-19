@@ -15,27 +15,81 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
   require Logger
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"row_data" => row_data, "execution_id" => execution_id}}) do
-    Logger.debug("Processing debenture row for execution ##{execution_id}")
+  def perform(%Oban.Job{
+        args: %{
+          "row_index" => row_index,
+          "row_data" => row_data,
+          "file_path" => _file_path,
+          "execution_id" => execution_id
+        }
+      }) do
+    Logger.debug("Processing debenture row ##{row_index} for execution ##{execution_id}")
 
-    case persist_debenture(row_data) do
+    # Parse row data (list of cell values from xlsxir)
+    parsed_data = parse_row_data(row_data, row_index)
+
+    case persist_debenture(parsed_data) do
       {:ok, :created} ->
-        Logger.debug("Created debenture: #{row_data["code"]}")
+        Logger.debug("Created debenture from row ##{row_index}")
         :ok
 
       {:ok, :updated} ->
-        Logger.debug("Updated debenture: #{row_data["code"]}")
+        Logger.debug("Updated debenture from row ##{row_index}")
         :ok
 
       {:skip, reason} ->
-        Logger.debug("Skipped debenture #{row_data["code"]}: #{inspect(reason)}")
+        Logger.debug("Skipped row ##{row_index}: #{inspect(reason)}")
         :ok
 
       {:error, reason} ->
-        Logger.error("Failed to persist debenture #{row_data["code"]}: #{inspect(reason)}")
+        Logger.error("Failed to persist row ##{row_index}: #{inspect(reason)}")
         {:error, reason}
     end
   end
+
+  defp parse_row_data(row, _row_index) when is_list(row) and length(row) > 15 do
+    # Extract only numeric data from xlsxir (inline strings not available)
+    # Column I (index 8): coupon_rate
+    # Column P (index 15): duration
+    coupon_rate = row |> Enum.at(8) |> to_decimal()
+    duration = row |> Enum.at(15) |> to_decimal()
+
+    %{
+      "security_type" => "debenture",
+      "series" => "ÚNICA",
+      "issuing" => "N/A",
+      "coupon_rate" => coupon_rate,
+      "duration" => to_integer(duration),
+      # Fields below are empty (come from inline strings)
+      "code" => "",
+      "issuer" => "",
+      "correction_rate_type" => "",
+      "correction_rate" => "",
+      "reference_date" => nil,
+      "maturity_date" => nil,
+      "ntnb_reference_date" => nil,
+      "benchmark_index" => nil,
+      "ntnb_reference" => "",
+      "credit_risk" => ""
+    }
+  end
+
+  defp parse_row_data(_row, _row_index), do: nil
+
+  defp to_decimal(nil), do: nil
+  defp to_decimal(value) when is_number(value), do: Decimal.from_float(value)
+  defp to_decimal(_), do: nil
+
+  defp to_integer(nil), do: nil
+
+  defp to_integer(%Decimal{} = d) do
+    d
+    |> Decimal.round(0, :down)
+    |> Decimal.to_integer()
+  end
+
+  defp to_integer(value) when is_integer(value), do: value
+  defp to_integer(_), do: nil
 
   defp persist_debenture(attrs) do
     # Validate required fields
