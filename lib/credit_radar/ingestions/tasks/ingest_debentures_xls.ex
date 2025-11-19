@@ -248,10 +248,48 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   end
 
   defp extract_inline_str_cells(file_path) do
-    # TEMPORARILY DISABLED: Inline string extraction causes OOM on large files
-    # TODO: Investigate alternative approaches or streaming XML parsers
-    Logger.warning("⚠️  Inline string extraction disabled to prevent OOM - some fields may be missing")
-    %{}
+    # Extract only sheet1.xml without loading other files
+    charlist_path = String.to_charlist(file_path)
+
+    {:ok, file_list} = :zip.list_dir(charlist_path)
+
+    sheet_file =
+      Enum.find(file_list, fn
+        {:zip_file, name, _info, _comment, _offset, _comp_size} ->
+          List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
+
+        _ ->
+          false
+      end)
+
+    case sheet_file do
+      {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
+        # Extract only this file
+        {:ok, [{^sheet_name, sheet_xml}]} =
+          :zip.extract(charlist_path, [
+            {:file_list, [sheet_name]},
+            :memory
+          ])
+
+        # Parse with xpath filter (only rows with inline strings)
+        result = extract_inline_str_from_xml(sheet_xml)
+
+        # Force GC immediately
+        :erlang.garbage_collect()
+
+        Logger.info("Extracted inline strings from #{map_size(result)} rows")
+        result
+
+      nil ->
+        Logger.warning("Could not find sheet1.xml in XLSX file")
+        %{}
+    end
+  rescue
+    error ->
+      Logger.error("Failed to extract inlineStr cells: #{inspect(error)}")
+      Logger.error("Stacktrace: #{inspect(__STACKTRACE__)}")
+      # Return empty map to allow processing to continue without inline strings
+      %{}
   end
 
   defp extract_inline_str_from_xml(sheet_xml) do

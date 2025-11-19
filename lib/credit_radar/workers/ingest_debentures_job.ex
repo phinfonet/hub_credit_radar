@@ -124,10 +124,83 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   end
 
   defp extract_inline_str_cells(file_path) do
-    # TEMPORARILY DISABLED: Inline string extraction causes OOM on large files
-    # TODO: Implement streaming XML parser or process per-row
-    Logger.warning("⚠️  Inline string extraction disabled to prevent OOM - some fields may be missing")
-    %{}
+    # Extract only sheet1.xml without loading other files
+    charlist_path = String.to_charlist(file_path)
+
+    {:ok, file_list} = :zip.list_dir(charlist_path)
+
+    sheet_file =
+      Enum.find(file_list, fn
+        {:zip_file, name, _info, _comment, _offset, _comp_size} ->
+          List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
+
+        _ ->
+          false
+      end)
+
+    case sheet_file do
+      {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
+        # Extract only this file
+        {:ok, [{^sheet_name, sheet_xml}]} =
+          :zip.extract(charlist_path, [
+            {:file_list, [sheet_name]},
+            :memory
+          ])
+
+        # Parse with xpath filter (only rows with inline strings)
+        result = extract_inline_str_from_xml(sheet_xml)
+
+        # Force GC immediately
+        :erlang.garbage_collect()
+
+        Logger.info("Extracted inline strings from #{map_size(result)} rows")
+        result
+
+      nil ->
+        Logger.warning("Could not find sheet1.xml in XLSX file")
+        %{}
+    end
+  rescue
+    error ->
+      Logger.error("Failed to extract inlineStr cells: #{inspect(error)}")
+      Logger.error("Stacktrace: #{inspect(__STACKTRACE__)}")
+      # Return empty map to allow processing to continue without inline strings
+      %{}
+  end
+
+  defp extract_inline_str_from_xml(sheet_xml) do
+    import SweetXml
+
+    # Use xpath to extract only rows that have inlineStr cells
+    sheet_xml
+    |> xpath(~x"//row[c/is]"l,
+      r: ~x"./@r"s,
+      cells: [
+        ~x"./c[is]"l,
+        ref: ~x"./@r"s,
+        value: ~x"./is/t/text()"s
+      ]
+    )
+    |> Enum.reduce(%{}, fn row, acc ->
+      row_num = String.to_integer(row.r)
+
+      cells_map =
+        row.cells
+        |> Enum.reduce(%{}, fn cell, cell_acc ->
+          if cell.value != "" do
+            col = cell.ref |> String.replace(~r/\d+/, "")
+            Map.put(cell_acc, col, cell.value)
+          else
+            cell_acc
+          end
+        end)
+
+      if map_size(cells_map) > 0 do
+        Map.put(acc, row_num, cells_map)
+      else
+        acc
+      end
+    end)
   end
 
   defp parse_row(row, row_index, inline_str_data) when is_list(row) and length(row) > 15 do
