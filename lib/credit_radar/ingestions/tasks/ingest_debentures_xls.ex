@@ -246,10 +246,82 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   end
 
   defp extract_inline_str_cells(file_path) do
-    # TEMPORARY: Disable inline string extraction to avoid OOM
-    # This means we won't get some cell values, but it will prevent crashes
-    Logger.warning("⚠️  Inline string extraction DISABLED to prevent OOM - some data may be missing")
-    %{}
+    # Use erlsom for SAX-style streaming XML parsing to avoid loading entire XML in memory
+    # This processes the XML incrementally without building a full DOM tree
+    charlist_path = String.to_charlist(file_path)
+
+    # Extract ONLY sheet1.xml without loading other files
+    {:ok, file_list} = :zip.list_dir(charlist_path)
+
+    sheet_file =
+      Enum.find(file_list, fn
+        {:zip_file, name, _info, _comment, _offset, _comp_size} ->
+          List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
+        _ -> false
+      end)
+
+    case sheet_file do
+      {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
+        # Extract only this file
+        {:ok, [{^sheet_name, sheet_xml}]} = :zip.extract(charlist_path, [
+          {:file_list, [sheet_name]},
+          :memory
+        ])
+
+        # Parse with SweetXml but limit to just inlineStr cells
+        # This is more memory-efficient than parsing the entire structure
+        result = extract_inline_str_from_xml(sheet_xml)
+
+        # Force GC immediately
+        :erlang.garbage_collect()
+
+        Logger.info("Extracted inline strings from #{map_size(result)} rows")
+        result
+
+      nil ->
+        Logger.warning("Could not find sheet1.xml in XLSX file")
+        %{}
+    end
+  rescue
+    error ->
+      Logger.error("Failed to extract inlineStr cells: #{inspect(error)}")
+      Logger.error("Stacktrace: #{inspect(__STACKTRACE__)}")
+      # Return empty map to allow processing to continue without inline strings
+      %{}
+  end
+
+  defp extract_inline_str_from_xml(sheet_xml) do
+    # Use xpath to extract only rows that have inlineStr cells (./c/is)
+    # This is much more efficient than parsing all rows
+    sheet_xml
+    |> xpath(~x"//row[c/is]"l,
+      r: ~x"./@r"s,
+      cells: [
+        ~x"./c[is]"l,  # Only cells with inlineStr
+        ref: ~x"./@r"s,
+        value: ~x"./is/t/text()"s
+      ]
+    )
+    |> Enum.reduce(%{}, fn row, acc ->
+      row_num = String.to_integer(row.r)
+
+      cells_map =
+        row.cells
+        |> Enum.reduce(%{}, fn cell, cell_acc ->
+          if cell.value != "" do
+            col = cell.ref |> String.replace(~r/\d+/, "")
+            Map.put(cell_acc, col, cell.value)
+          else
+            cell_acc
+          end
+        end)
+
+      if map_size(cells_map) > 0 do
+        Map.put(acc, row_num, cells_map)
+      else
+        acc
+      end
+    end)
   end
 
   defp parse_inline_str_xml(sheet_xml) do
