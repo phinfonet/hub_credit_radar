@@ -153,29 +153,30 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
     case sheet_file do
       {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
-        # Extract to temporary directory (not to memory)
+        Logger.info("Extracting #{List.to_string(sheet_name)} to memory first...")
+
+        # Extract to memory first (only sheet1.xml, ~10MB)
+        {:ok, [{^sheet_name, sheet_xml_content}]} =
+          :zip.extract(charlist_path, [
+            {:file_list, [sheet_name]},
+            :memory
+          ])
+
+        Logger.info("Extracted #{byte_size(sheet_xml_content)} bytes to memory")
+
+        # Now save to file for jobs to read
         tmp_dir = "/tmp/debentures-#{execution_id}"
         File.mkdir_p!(tmp_dir)
 
-        Logger.info("Extracting #{List.to_string(sheet_name)} to #{tmp_dir}")
+        xml_path = Path.join(tmp_dir, "sheet1.xml")
+        File.write!(xml_path, sheet_xml_content)
 
-        # Extract using :zip.extract with proper options
-        case :zip.extract(charlist_path, [
-          {:file_list, [sheet_name]},
-          {:cwd, String.to_charlist(tmp_dir)}
-        ]) do
-          {:ok, extracted_files} ->
-            Logger.info("Successfully extracted files: #{inspect(extracted_files)}")
+        Logger.info("Saved sheet XML to: #{xml_path}, size: #{File.stat!(xml_path).size} bytes")
 
-            # Return path to extracted XML file
-            xml_path = Path.join(tmp_dir, List.to_string(sheet_name))
-            Logger.info("Sheet XML extracted to: #{xml_path}, size: #{File.stat!(xml_path).size} bytes")
-            xml_path
+        # Force GC to free the XML content from memory
+        :erlang.garbage_collect()
 
-          {:error, reason} ->
-            Logger.error("Failed to extract XML: #{inspect(reason)}")
-            raise "Failed to extract sheet1.xml: #{inspect(reason)}"
-        end
+        xml_path
 
       nil ->
         raise "Could not find sheet1.xml in XLSX file"
