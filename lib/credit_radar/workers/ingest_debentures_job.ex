@@ -156,7 +156,7 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
       benchmark_index = determine_benchmark_index(ntnb_reference_date, correction_rate_type)
 
-      # Build row data map (convert dates to ISO8601 strings for JSON serialization)
+      # Build row data map (convert to JSON-serializable types)
       %{
         "reference_date" => date_to_string(reference_date),
         "security_type" => "debenture",
@@ -168,8 +168,8 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         "series" => "ÚNICA",
         "issuing" => "N/A",
         "maturity_date" => date_to_string(maturity_date),
-        "coupon_rate" => decimal_to_string(coupon_rate),
-        "duration" => decimal_to_string(duration),
+        "coupon_rate" => coupon_rate,
+        "duration" => duration_to_int(duration),
         "ntnb_reference_date" => date_to_string(ntnb_reference_date),
         "benchmark_index" => benchmark_index,
         "ntnb_reference" => ntnb_reference_str
@@ -192,11 +192,18 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   defp to_decimal(value) when is_binary(value), do: Decimal.new(value)
   defp to_decimal(_), do: nil
 
-  defp decimal_to_string(nil), do: nil
-  defp decimal_to_string(%Decimal{} = d), do: Decimal.to_string(d)
-
   defp date_to_string(nil), do: nil
   defp date_to_string(%Date{} = date), do: Date.to_iso8601(date)
+
+  defp duration_to_int(nil), do: nil
+
+  defp duration_to_int(%Decimal{} = d) do
+    d
+    |> Decimal.round(0, :down)
+    |> Decimal.to_integer()
+  end
+
+  defp duration_to_int(_), do: nil
 
   defp parse_brazilian_date(nil), do: nil
   defp parse_brazilian_date(""), do: nil

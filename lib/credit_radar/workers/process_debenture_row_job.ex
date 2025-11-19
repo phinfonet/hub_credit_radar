@@ -39,15 +39,17 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
 
   defp persist_debenture(attrs) do
     # Validate required fields
-    unless attrs["code"] && attrs["issuer"] do
+    unless attrs["code"] && attrs["issuer"] && attrs["code"] != "" && attrs["issuer"] != "" do
       {:skip, :missing_required_fields}
     else
-      # Convert string dates to Date
+      # Convert string dates to Date and decimals to proper types
       attrs_with_dates =
         attrs
         |> Map.update("reference_date", nil, &parse_date/1)
         |> Map.update("maturity_date", nil, &parse_date/1)
         |> Map.update("ntnb_reference_date", nil, &parse_date/1)
+        |> Map.update("coupon_rate", nil, &parse_decimal/1)
+        |> Map.update("duration", nil, &parse_duration/1)
 
       # Try to find existing security by code
       case Repo.get_by(Security, code: attrs_with_dates["code"]) do
@@ -85,4 +87,29 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
   end
 
   defp parse_date(_), do: nil
+
+  defp parse_decimal(nil), do: nil
+  defp parse_decimal(%Decimal{} = decimal), do: decimal
+  defp parse_decimal(number) when is_number(number), do: Decimal.from_float(number)
+
+  defp parse_decimal(decimal_string) when is_binary(decimal_string) do
+    case Decimal.parse(decimal_string) do
+      {decimal, ""} -> decimal
+      _ -> nil
+    end
+  end
+
+  defp parse_decimal(_), do: nil
+
+  defp parse_duration(nil), do: nil
+  defp parse_duration(duration) when is_integer(duration), do: duration
+
+  defp parse_duration(duration_string) when is_binary(duration_string) do
+    case Integer.parse(duration_string) do
+      {int, ""} -> int
+      _ -> nil
+    end
+  end
+
+  defp parse_duration(_), do: nil
 end
