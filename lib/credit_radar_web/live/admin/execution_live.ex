@@ -6,22 +6,11 @@ defmodule CreditRadarWeb.Live.Admin.ExecutionLive do
       schema: Ingestions.Execution,
       repo: CreditRadar.Repo,
       update_changeset: &Ingestions.execution_update_changeset/3,
-      create_changeset: &Ingestions.execution_create_changeset/3,
-      pubsub: [
-        name: CreditRadar.PubSub,
-        topic: fn
-          # Subscribe to updates for individual executions
-          %Ingestions.Execution{id: id} when not is_nil(id) ->
-            "execution:#{id}"
-
-          # No subscription for new records
-          _ ->
-            nil
-        end,
-        event: :execution_updated
-      ]
+      create_changeset: &Ingestions.execution_create_changeset/3
     ],
     layout: {CreditRadarWeb.Layouts, :admin}
+
+  require Logger
 
   @impl Backpex.LiveResource
   def singular_name, do: "Execution"
@@ -78,4 +67,40 @@ defmodule CreditRadarWeb.Live.Admin.ExecutionLive do
   @impl Backpex.LiveResource
   def can?(_assigns, action, _item) when action in [:edit, :update, :delete], do: false
   def can?(_assigns, _action, _item), do: true
+
+  # Mount callback to subscribe to execution updates
+  @impl Phoenix.LiveView
+  def mount(params, session, socket) do
+    # Call parent mount first
+    socket = super(params, session, socket)
+
+    # Subscribe to a general executions topic for all updates
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(CreditRadar.PubSub, "executions:updates")
+      Logger.debug("Subscribed to executions:updates")
+    end
+
+    {:ok, socket}
+  end
+
+  # Handle PubSub messages for execution updates
+  @impl Phoenix.LiveView
+  def handle_info({:execution_updated, execution}, socket) do
+    Logger.debug("Received execution update for ##{execution.id}: #{execution.status} - #{execution.progress}%")
+
+    # Send a message to trigger Backpex to reload data
+    send(self(), :reload_items)
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:reload_items, socket) do
+    # Force Backpex to reload items by sending the reload event
+    {:noreply, push_event(socket, "backpex:reload", %{})}
+  end
+
+  def handle_info(msg, socket) do
+    # Let Backpex handle other messages
+    super(msg, socket)
+  end
 end

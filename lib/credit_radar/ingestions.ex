@@ -154,6 +154,12 @@ defmodule CreditRadar.Ingestions do
       {:execution_updated, execution}
     )
 
+    Phoenix.PubSub.broadcast(
+      CreditRadar.PubSub,
+      "executions:updates",
+      {:execution_updated, execution}
+    )
+
     Logger.info("✓ Execution marked as running, now calling module.run()")
 
     # Debug: show all exported functions
@@ -217,6 +223,12 @@ defmodule CreditRadar.Ingestions do
           {:execution_updated, final_execution}
         )
 
+        Phoenix.PubSub.broadcast(
+          CreditRadar.PubSub,
+          "executions:updates",
+          {:execution_updated, final_execution}
+        )
+
       _ ->
         :ok
     end
@@ -238,6 +250,12 @@ defmodule CreditRadar.Ingestions do
         Phoenix.PubSub.broadcast(
           CreditRadar.PubSub,
           "execution:#{execution.id}",
+          {:execution_updated, updated_execution}
+        )
+
+        Phoenix.PubSub.broadcast(
+          CreditRadar.PubSub,
+          "executions:updates",
           {:execution_updated, updated_execution}
         )
 

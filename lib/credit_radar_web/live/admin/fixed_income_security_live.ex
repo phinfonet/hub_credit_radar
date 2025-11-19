@@ -264,6 +264,12 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
           {:execution_updated, execution}
         )
 
+        Phoenix.PubSub.broadcast(
+          CreditRadar.PubSub,
+          "executions:updates",
+          {:execution_updated, execution}
+        )
+
         try do
           case IngestDebenturesXls.run(execution, file_path) do
             {:ok, stats} ->
@@ -290,6 +296,12 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
                 {:execution_updated, execution}
               )
 
+              Phoenix.PubSub.broadcast(
+                CreditRadar.PubSub,
+                "executions:updates",
+                {:execution_updated, execution}
+              )
+
             {:error, reason} ->
               Logger.error("Failed to process Debentures XLS file: #{inspect(reason)}")
 
@@ -306,6 +318,12 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
               Phoenix.PubSub.broadcast(
                 CreditRadar.PubSub,
                 "execution:#{execution.id}",
+                {:execution_updated, execution}
+              )
+
+              Phoenix.PubSub.broadcast(
+                CreditRadar.PubSub,
+                "executions:updates",
                 {:execution_updated, execution}
               )
           end
