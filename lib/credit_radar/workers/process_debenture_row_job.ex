@@ -20,16 +20,28 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
         args: %{
           "row_index" => row_index,
           "row_data" => row_data,
-          "inline_str_data" => inline_str_data,
+          "ets_table" => ets_table_str,
           "execution_id" => execution_id
         }
       }) do
     Logger.debug("Processing debenture row ##{row_index} for execution ##{execution_id}")
 
-    # Parse row data combining numeric data + inline strings (received from IngestDebenturesJob)
+    # Get XML file path from ETS table
+    ets_table = String.to_atom(ets_table_str)
+    [{:xml_file_path, xml_file_path}] = :ets.lookup(ets_table, :xml_file_path)
+
+    # Extract inline strings for THIS row only from XML file
+    inline_str_data = extract_inline_str_for_row_from_file(xml_file_path, row_index)
+
+    # Parse row data combining numeric data + inline strings
     parsed_data = parse_row_data(row_data, row_index, inline_str_data)
 
-    case persist_debenture(parsed_data) do
+    result = persist_debenture(parsed_data)
+
+    # Track job completion and cleanup if all jobs are done
+    cleanup_if_all_jobs_completed(ets_table, xml_file_path)
+
+    case result do
       {:ok, :created} ->
         Logger.debug("Created debenture from row ##{row_index}")
         :ok
@@ -45,6 +57,75 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
       {:error, reason} ->
         Logger.error("Failed to persist row ##{row_index}: #{inspect(reason)}")
         {:error, reason}
+    end
+  end
+
+  # Extract inline strings for a specific row from the XML file (memory efficient)
+  defp extract_inline_str_for_row_from_file(xml_file_path, row_index) do
+    import SweetXml
+
+    # Read XML file and extract only this specific row
+    xml_content = File.read!(xml_file_path)
+
+    result =
+      xml_content
+      |> xpath(~x"//row[@r='#{row_index}']"o,
+        cells: [
+          ~x"./c[is]"l,
+          ref: ~x"./@r"s,
+          value: ~x"./is/t/text()"s
+        ]
+      )
+
+    cells_map =
+      case result do
+        nil ->
+          %{}
+
+        row ->
+          row.cells
+          |> Enum.reduce(%{}, fn cell, acc ->
+            if cell.value != "" do
+              col = cell.ref |> String.replace(~r/\d+/, "")
+              Map.put(acc, col, cell.value)
+            else
+              acc
+            end
+          end)
+      end
+
+    # Force GC after processing
+    :erlang.garbage_collect()
+
+    cells_map
+  rescue
+    error ->
+      Logger.error("Failed to extract inline strings for row #{row_index}: #{inspect(error)}")
+      %{}
+  end
+
+  # Track completed jobs and cleanup when all jobs are done
+  defp cleanup_if_all_jobs_completed(ets_table, xml_file_path) do
+    try do
+      # Atomically increment completed counter
+      completed = :ets.update_counter(ets_table, :completed_jobs, {2, 1})
+      [{:total_jobs, total}] = :ets.lookup(ets_table, :total_jobs)
+
+      if completed >= total do
+        Logger.info("All #{total} jobs completed, cleaning up XML file and ETS table")
+
+        # Delete temporary XML file and directory
+        xml_dir = Path.dirname(xml_file_path)
+        File.rm_rf!(xml_dir)
+        Logger.info("Deleted temporary directory: #{xml_dir}")
+
+        # Delete ETS table
+        :ets.delete(ets_table)
+        Logger.info("Deleted ETS table: #{ets_table}")
+      end
+    rescue
+      error ->
+        Logger.warning("Failed to cleanup (this is normal if table was already deleted): #{inspect(error)}")
     end
   end
 

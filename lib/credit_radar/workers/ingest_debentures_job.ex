@@ -80,10 +80,17 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
       {:error, :file_not_found}
     else
       try do
-        # Extract inline strings ONCE for all rows (reusing existing logic from ingest_debentures_xls.ex)
-        Logger.info("Extracting inline strings from XLSX...")
-        inline_str_data = extract_inline_str_cells(file_path)
-        Logger.info("Extracted inline strings from #{map_size(inline_str_data)} rows")
+        # Extract sheet1.xml to temporary file (avoids loading entire XML in memory)
+        Logger.info("Extracting sheet1.xml to temporary file...")
+        xml_file_path = extract_sheet_xml_to_file(file_path, execution_id)
+        Logger.info("Extracted sheet1.xml to: #{xml_file_path}")
+
+        # Create ETS table to share XML file path with row jobs
+        table_name = :"debentures_xml_#{execution_id}"
+        :ets.new(table_name, [:named_table, :public, :set])
+        :ets.insert(table_name, {:xml_file_path, xml_file_path})
+        :ets.insert(table_name, {:total_jobs, 0})
+        Logger.info("Created ETS table: #{table_name}")
 
         # Stream the file row by row to avoid loading all rows in memory
         Logger.info("Opening XLSX file for streaming...")
@@ -100,14 +107,11 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
             if Enum.all?(row, &is_nil/1) do
               count
             else
-              # Get inline strings for this specific row
-              row_inline_data = Map.get(inline_str_data, row_index, %{})
-
-              # Enqueue job with numeric data + inline strings for this row
+              # Enqueue job with numeric data + reference to ETS table
               %{
                 row_index: row_index,
                 row_data: row,
-                inline_str_data: row_inline_data,
+                ets_table: Atom.to_string(table_name),
                 execution_id: execution_id
               }
               |> ProcessDebentureRowJob.new()
@@ -118,6 +122,10 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
           end)
 
         Xlsxir.close(pid)
+
+        # Store total job count in ETS for cleanup tracking
+        :ets.insert(table_name, {:total_jobs, row_count})
+        :ets.insert(table_name, {:completed_jobs, 0})
 
         Logger.info("Enqueued #{row_count} row processing jobs (streamed)")
 
@@ -130,10 +138,8 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
     end
   end
 
-  # Reuse the inline string extraction logic from ingest_debentures_xls.ex
-  defp extract_inline_str_cells(file_path) do
-    import SweetXml
-
+  # Extract sheet1.xml to a temporary file to avoid loading entire XML in memory
+  defp extract_sheet_xml_to_file(file_path, execution_id) do
     charlist_path = String.to_charlist(file_path)
     {:ok, file_list} = :zip.list_dir(charlist_path)
 
@@ -147,58 +153,25 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
     case sheet_file do
       {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
-        # Extract only sheet1.xml
-        {:ok, [{^sheet_name, sheet_xml}]} =
-          :zip.extract(charlist_path, [
-            {:file_list, [sheet_name]},
-            :memory
-          ])
+        # Extract to temporary directory (not to memory)
+        tmp_dir = "/tmp/debentures-#{execution_id}"
+        File.mkdir_p!(tmp_dir)
 
-        # Parse with xpath filter (only rows with inline strings)
-        result =
-          sheet_xml
-          |> xpath(~x"//row[c/is]"l,
-            r: ~x"./@r"s,
-            cells: [
-              ~x"./c[is]"l,
-              ref: ~x"./@r"s,
-              value: ~x"./is/t/text()"s
-            ]
-          )
-          |> Enum.reduce(%{}, fn row, acc ->
-            row_num = String.to_integer(row.r)
+        charlist_tmp_dir = String.to_charlist(tmp_dir)
 
-            cells_map =
-              row.cells
-              |> Enum.reduce(%{}, fn cell, cell_acc ->
-                if cell.value != "" do
-                  col = cell.ref |> String.replace(~r/\d+/, "")
-                  Map.put(cell_acc, col, cell.value)
-                else
-                  cell_acc
-                end
-              end)
+        {:ok, _} = :zip.extract(charlist_path, [
+          {:file_list, [sheet_name]},
+          {:cwd, charlist_tmp_dir}
+        ])
 
-            if map_size(cells_map) > 0 do
-              Map.put(acc, row_num, cells_map)
-            else
-              acc
-            end
-          end)
-
-        # Force GC immediately after extraction
-        :erlang.garbage_collect()
-
-        result
+        # Return path to extracted XML file
+        xml_path = Path.join(tmp_dir, List.to_string(sheet_name))
+        Logger.info("Sheet XML extracted to: #{xml_path}, size: #{File.stat!(xml_path).size} bytes")
+        xml_path
 
       nil ->
-        Logger.warning("Could not find sheet1.xml in XLSX file")
-        %{}
+        raise "Could not find sheet1.xml in XLSX file"
     end
-  rescue
-    error ->
-      Logger.error("Failed to extract inline strings: #{inspect(error)}")
-      %{}
   end
 
 
