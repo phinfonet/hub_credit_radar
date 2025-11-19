@@ -3,6 +3,7 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
   Oban worker for processing a single debenture row.
 
   This job is enqueued by IngestDebenturesJob for each row in the XLSX file.
+  Receives both numeric data (from xlsxir) and inline strings (pre-extracted) as arguments.
   Processing rows individually avoids OOM issues with large files.
   """
   use Oban.Worker, queue: :debenture_rows, max_attempts: 3
@@ -19,16 +20,13 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
         args: %{
           "row_index" => row_index,
           "row_data" => row_data,
-          "file_path" => file_path,
+          "inline_str_data" => inline_str_data,
           "execution_id" => execution_id
         }
       }) do
     Logger.debug("Processing debenture row ##{row_index} for execution ##{execution_id}")
 
-    # Extract inline strings for THIS row only (memory efficient - just one row)
-    inline_str_data = extract_inline_str_for_row(file_path, row_index)
-
-    # Parse row data combining numeric data + inline strings
+    # Parse row data combining numeric data + inline strings (received from IngestDebenturesJob)
     parsed_data = parse_row_data(row_data, row_index, inline_str_data)
 
     case persist_debenture(parsed_data) do
@@ -48,73 +46,6 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
         Logger.error("Failed to persist row ##{row_index}: #{inspect(reason)}")
         {:error, reason}
     end
-  end
-
-  defp extract_inline_str_for_row(file_path, row_index) do
-    import SweetXml
-
-    charlist_path = String.to_charlist(file_path)
-
-    {:ok, file_list} = :zip.list_dir(charlist_path)
-
-    sheet_file =
-      Enum.find(file_list, fn
-        {:zip_file, name, _info, _comment, _offset, _comp_size} ->
-          List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
-
-        _ ->
-          false
-      end)
-
-    case sheet_file do
-      {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
-        # Extract only sheet1.xml
-        {:ok, [{^sheet_name, sheet_xml}]} =
-          :zip.extract(charlist_path, [
-            {:file_list, [sheet_name]},
-            :memory
-          ])
-
-        # Extract inline strings ONLY for this specific row
-        result =
-          sheet_xml
-          |> xpath(~x"//row[@r='#{row_index}']"o,
-            cells: [
-              ~x"./c[is]"l,
-              ref: ~x"./@r"s,
-              value: ~x"./is/t/text()"s
-            ]
-          )
-
-        cells_map =
-          case result do
-            nil ->
-              %{}
-
-            row ->
-              row.cells
-              |> Enum.reduce(%{}, fn cell, acc ->
-                if cell.value != "" do
-                  col = cell.ref |> String.replace(~r/\d+/, "")
-                  Map.put(acc, col, cell.value)
-                else
-                  acc
-                end
-              end)
-          end
-
-        # Force GC immediately
-        :erlang.garbage_collect()
-
-        cells_map
-
-      nil ->
-        %{}
-    end
-  rescue
-    error ->
-      Logger.error("Failed to extract inline strings for row #{row_index}: #{inspect(error)}")
-      %{}
   end
 
   defp parse_row_data(row, _row_index, inline_str_data) when is_list(row) and length(row) > 15 do
