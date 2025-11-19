@@ -61,7 +61,7 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   end
 
   # Size of each batch to process (to avoid OOM issues with large files)
-  @batch_size 1000
+  @batch_size 250
 
   @doc """
   Executes the Debentures XLS ingestion pipeline.
