@@ -117,9 +117,9 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         # Each job will open the XLSX and read only its row
         Logger.info("Enqueuing #{row_count} jobs in batches...")
 
-        # Process in small batches to avoid OOM (1GB RAM constraint)
+        # Process in VERY small batches to avoid OOM (1GB RAM is extremely tight)
         # Use Stream to avoid loading all row indices in memory at once
-        batch_size = 50
+        batch_size = 10
 
         Stream.iterate(2, &(&1 + 1))
         |> Stream.take(row_count)
@@ -141,7 +141,13 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
           # Force GC after each batch
           :erlang.garbage_collect()
 
-          Logger.info("Enqueued batch (#{length(batch)} jobs), total so far: #{List.last(batch) - 1}")
+          # Small sleep to allow GC to actually free memory
+          Process.sleep(5)
+
+          # Log every 100 jobs
+          if rem(List.last(batch), 100) == 0 do
+            Logger.info("Enqueued #{List.last(batch) - 1} jobs so far...")
+          end
         end)
         |> Stream.run()
 
