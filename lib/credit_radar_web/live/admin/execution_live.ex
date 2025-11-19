@@ -6,7 +6,20 @@ defmodule CreditRadarWeb.Live.Admin.ExecutionLive do
       schema: Ingestions.Execution,
       repo: CreditRadar.Repo,
       update_changeset: &Ingestions.execution_update_changeset/3,
-      create_changeset: &Ingestions.execution_create_changeset/3
+      create_changeset: &Ingestions.execution_create_changeset/3,
+      pubsub: [
+        name: CreditRadar.PubSub,
+        topic: fn
+          # Subscribe to updates for individual executions
+          %Ingestions.Execution{id: id} when not is_nil(id) ->
+            "execution:#{id}"
+
+          # No subscription for new records
+          _ ->
+            nil
+        end,
+        event: :execution_updated
+      ]
     ],
     layout: {CreditRadarWeb.Layouts, :admin}
 

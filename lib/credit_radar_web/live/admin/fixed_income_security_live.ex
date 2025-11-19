@@ -9,8 +9,10 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     layout: {CreditRadarWeb.Layouts, :admin}
 
   alias CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive
+  alias CreditRadar.Ingestions
   alias CreditRadar.Ingestions.Tasks.IngestCriCraXls
   alias CreditRadar.Ingestions.Tasks.IngestDebenturesXls
+  alias CreditRadar.Repo
 
   require Logger
 
@@ -230,11 +232,40 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     end
 
     defp start_async_ingestion(file_path) do
+      # Create execution record for tracking progress
+      {:ok, execution} =
+        %Ingestions.Execution{}
+        |> Ingestions.execution_create_changeset(%{
+          kind: "debentures",
+          trigger: "upload",
+          status: "pending"
+        })
+        |> Repo.insert()
+
+      Logger.info("📋 Created execution ##{execution.id} for Debentures XLS upload")
+
       Task.Supervisor.start_child(CreditRadar.Ingestions.TaskSupervisor, fn ->
         Logger.info("⏳ Starting to process Debentures XLS file: #{file_path}")
 
+        # Mark execution as running
+        {:ok, execution} =
+          execution
+          |> Ingestions.execution_update_changeset(%{
+            status: "running",
+            started_at: DateTime.utc_now(),
+            progress: 0
+          })
+          |> Repo.update()
+
+        # Broadcast start
+        Phoenix.PubSub.broadcast(
+          CreditRadar.PubSub,
+          "execution:#{execution.id}",
+          {:execution_updated, execution}
+        )
+
         try do
-          case IngestDebenturesXls.run(nil, file_path) do
+          case IngestDebenturesXls.run(execution, file_path) do
             {:ok, stats} ->
               total = stats.created + stats.updated
 
@@ -242,8 +273,41 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
                 "✅ Debentures XLS ingestion completed successfully: #{total} títulos (#{stats.created} novos, #{stats.updated} atualizados, #{stats.skipped} pulados)"
               )
 
+              # Mark execution as completed
+              {:ok, execution} =
+                execution
+                |> Ingestions.execution_update_changeset(%{
+                  status: "completed",
+                  finished_at: DateTime.utc_now(),
+                  progress: 100
+                })
+                |> Repo.update()
+
+              # Broadcast completion
+              Phoenix.PubSub.broadcast(
+                CreditRadar.PubSub,
+                "execution:#{execution.id}",
+                {:execution_updated, execution}
+              )
+
             {:error, reason} ->
               Logger.error("Failed to process Debentures XLS file: #{inspect(reason)}")
+
+              # Mark execution as failed
+              {:ok, execution} =
+                execution
+                |> Ingestions.execution_update_changeset(%{
+                  status: "failed",
+                  finished_at: DateTime.utc_now()
+                })
+                |> Repo.update()
+
+              # Broadcast failure
+              Phoenix.PubSub.broadcast(
+                CreditRadar.PubSub,
+                "execution:#{execution.id}",
+                {:execution_updated, execution}
+              )
           end
         after
           File.rm(file_path)

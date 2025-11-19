@@ -147,6 +147,13 @@ defmodule CreditRadar.Ingestions do
       })
       |> Repo.update()
 
+    # Broadcast execution started
+    Phoenix.PubSub.broadcast(
+      CreditRadar.PubSub,
+      "execution:#{execution.id}",
+      {:execution_updated, execution}
+    )
+
     Logger.info("✓ Execution marked as running, now calling module.run()")
 
     # Debug: show all exported functions
@@ -192,21 +199,53 @@ defmodule CreditRadar.Ingestions do
         @status_failed -> latest_execution.progress || @progress_default
       end
 
-    latest_execution
-    |> execution_update_changeset(%{
-      status: status,
-      finished_at: DateTime.utc_now(),
-      progress: final_progress
-    })
-    |> Repo.update()
+    result =
+      latest_execution
+      |> execution_update_changeset(%{
+        status: status,
+        finished_at: DateTime.utc_now(),
+        progress: final_progress
+      })
+      |> Repo.update()
+
+    # Broadcast execution completion
+    case result do
+      {:ok, final_execution} ->
+        Phoenix.PubSub.broadcast(
+          CreditRadar.PubSub,
+          "execution:#{final_execution.id}",
+          {:execution_updated, final_execution}
+        )
+
+      _ ->
+        :ok
+    end
+
+    result
   end
 
   defp do_report_progress(execution, progress) do
     normalized = normalize_progress(progress)
 
-    execution
-    |> execution_update_changeset(%{progress: normalized})
-    |> Repo.update()
+    result =
+      execution
+      |> execution_update_changeset(%{progress: normalized})
+      |> Repo.update()
+
+    # Broadcast progress update via PubSub for real-time UI updates
+    case result do
+      {:ok, updated_execution} ->
+        Phoenix.PubSub.broadcast(
+          CreditRadar.PubSub,
+          "execution:#{execution.id}",
+          {:execution_updated, updated_execution}
+        )
+
+        result
+
+      error ->
+        error
+    end
   end
 
   defp finalize_status(:ok), do: @status_completed
