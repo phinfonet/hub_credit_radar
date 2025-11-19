@@ -233,7 +233,7 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
 
     defp start_async_ingestion(file_path) do
       # Create execution record for tracking progress
-      {:ok, execution} =
+      execution_result =
         %Ingestions.Execution{}
         |> Ingestions.execution_create_changeset(%{
           kind: "debentures",
@@ -242,95 +242,110 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
         })
         |> Repo.insert()
 
-      Logger.info("📋 Created execution ##{execution.id} for Debentures XLS upload")
+      case execution_result do
+        {:ok, execution} ->
+          Logger.info("📋 Created execution ##{execution.id} for Debentures XLS upload")
 
-      Task.Supervisor.start_child(CreditRadar.Ingestions.TaskSupervisor, fn ->
-        Logger.info("⏳ Starting to process Debentures XLS file: #{file_path}")
+          Task.Supervisor.start_child(CreditRadar.Ingestions.TaskSupervisor, fn ->
+            Logger.info("⏳ Starting to process Debentures XLS file: #{file_path}")
 
-        # Mark execution as running
-        {:ok, execution} =
-          execution
-          |> Ingestions.execution_update_changeset(%{
-            status: "running",
-            started_at: DateTime.utc_now(),
-            progress: 0
-          })
-          |> Repo.update()
+            # Mark execution as running
+            case Ingestions.execution_update_changeset(execution, %{
+                   status: "running",
+                   started_at: DateTime.utc_now(),
+                   progress: 0
+                 })
+                 |> Repo.update() do
+              {:ok, execution} ->
+                # Broadcast start
+                Phoenix.PubSub.broadcast(
+                  CreditRadar.PubSub,
+                  "execution:#{execution.id}",
+                  {:execution_updated, execution}
+                )
 
-        # Broadcast start
-        Phoenix.PubSub.broadcast(
-          CreditRadar.PubSub,
-          "execution:#{execution.id}",
-          {:execution_updated, execution}
-        )
+                Phoenix.PubSub.broadcast(
+                  CreditRadar.PubSub,
+                  "executions:updates",
+                  {:execution_updated, execution}
+                )
 
-        Phoenix.PubSub.broadcast(
-          CreditRadar.PubSub,
-          "executions:updates",
-          {:execution_updated, execution}
-        )
+                try do
+                  case IngestDebenturesXls.run(execution, file_path) do
+                    {:ok, stats} ->
+                      total = stats.created + stats.updated
 
-        try do
-          case IngestDebenturesXls.run(execution, file_path) do
-            {:ok, stats} ->
-              total = stats.created + stats.updated
+                      Logger.info(
+                        "✅ Debentures XLS ingestion completed successfully: #{total} títulos (#{stats.created} novos, #{stats.updated} atualizados, #{stats.skipped} pulados)"
+                      )
 
-              Logger.info(
-                "✅ Debentures XLS ingestion completed successfully: #{total} títulos (#{stats.created} novos, #{stats.updated} atualizados, #{stats.skipped} pulados)"
-              )
+                      # Mark execution as completed
+                      case Ingestions.execution_update_changeset(execution, %{
+                             status: "completed",
+                             finished_at: DateTime.utc_now(),
+                             progress: 100
+                           })
+                           |> Repo.update() do
+                        {:ok, execution} ->
+                          # Broadcast completion
+                          Phoenix.PubSub.broadcast(
+                            CreditRadar.PubSub,
+                            "execution:#{execution.id}",
+                            {:execution_updated, execution}
+                          )
 
-              # Mark execution as completed
-              {:ok, execution} =
-                execution
-                |> Ingestions.execution_update_changeset(%{
-                  status: "completed",
-                  finished_at: DateTime.utc_now(),
-                  progress: 100
-                })
-                |> Repo.update()
+                          Phoenix.PubSub.broadcast(
+                            CreditRadar.PubSub,
+                            "executions:updates",
+                            {:execution_updated, execution}
+                          )
 
-              # Broadcast completion
-              Phoenix.PubSub.broadcast(
-                CreditRadar.PubSub,
-                "execution:#{execution.id}",
-                {:execution_updated, execution}
-              )
+                        {:error, reason} ->
+                          Logger.error("Failed to mark execution as completed: #{inspect(reason)}")
+                      end
 
-              Phoenix.PubSub.broadcast(
-                CreditRadar.PubSub,
-                "executions:updates",
-                {:execution_updated, execution}
-              )
+                    {:error, reason} ->
+                      Logger.error("Failed to process Debentures XLS file: #{inspect(reason)}")
 
-            {:error, reason} ->
-              Logger.error("Failed to process Debentures XLS file: #{inspect(reason)}")
+                      # Mark execution as failed
+                      case Ingestions.execution_update_changeset(execution, %{
+                             status: "failed",
+                             finished_at: DateTime.utc_now()
+                           })
+                           |> Repo.update() do
+                        {:ok, execution} ->
+                          # Broadcast failure
+                          Phoenix.PubSub.broadcast(
+                            CreditRadar.PubSub,
+                            "execution:#{execution.id}",
+                            {:execution_updated, execution}
+                          )
 
-              # Mark execution as failed
-              {:ok, execution} =
-                execution
-                |> Ingestions.execution_update_changeset(%{
-                  status: "failed",
-                  finished_at: DateTime.utc_now()
-                })
-                |> Repo.update()
+                          Phoenix.PubSub.broadcast(
+                            CreditRadar.PubSub,
+                            "executions:updates",
+                            {:execution_updated, execution}
+                          )
 
-              # Broadcast failure
-              Phoenix.PubSub.broadcast(
-                CreditRadar.PubSub,
-                "execution:#{execution.id}",
-                {:execution_updated, execution}
-              )
+                        {:error, reason} ->
+                          Logger.error("Failed to mark execution as failed: #{inspect(reason)}")
+                      end
+                  end
+                after
+                  File.rm(file_path)
+                end
 
-              Phoenix.PubSub.broadcast(
-                CreditRadar.PubSub,
-                "executions:updates",
-                {:execution_updated, execution}
-              )
-          end
-        after
+              {:error, reason} ->
+                Logger.error("Failed to mark execution as running: #{inspect(reason)}")
+                File.rm(file_path)
+            end
+          end)
+
+        {:error, changeset} ->
+          Logger.error("❌ Failed to create execution for upload: #{inspect(changeset.errors)}")
+          Logger.error("Changeset: #{inspect(changeset)}")
           File.rm(file_path)
-        end
-      end)
+      end
     end
   end
 end
