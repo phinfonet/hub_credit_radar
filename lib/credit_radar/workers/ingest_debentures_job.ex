@@ -71,9 +71,9 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   end
 
   @doc """
-  Parses XLSX file and enqueues a job for each row.
+  Parses XLSX file and enqueues a job for each row using TRUE streaming.
 
-  Reads file incrementally to avoid loading entire file in memory.
+  Uses ElixirXlsx for memory-efficient streaming instead of loading entire file.
   """
   defp parse_and_enqueue_rows(file_path, execution_id) do
     unless File.exists?(file_path) do
@@ -85,44 +85,66 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         File.mkdir_p!(tmp_dir)
         Logger.info("Created temporary directory: #{tmp_dir}")
 
-        # Extract sheet1.xml to temporary file (avoids loading entire XML in memory)
+        # Extract sheet1.xml to temporary file (for inline strings)
         Logger.info("Extracting sheet1.xml to temporary file...")
         xml_file_path = extract_sheet_xml_to_file(file_path, tmp_dir)
         Logger.info("Extracted sheet1.xml to: #{xml_file_path}")
 
-        # Create ETS table to share file paths with row jobs
+        # Create ETS table to share XML file path with row jobs
         table_name = :"debentures_xml_#{execution_id}"
         :ets.new(table_name, [:named_table, :public, :set])
         :ets.insert(table_name, {:xml_file_path, xml_file_path})
         :ets.insert(table_name, {:total_jobs, 0})
         Logger.info("Created ETS table: #{table_name}")
 
-        # Copy XLSX to temp dir for jobs to access
-        xlsx_copy_path = Path.join(tmp_dir, "source.xlsx")
-        File.cp!(file_path, xlsx_copy_path)
-        :ets.insert(table_name, {:xlsx_file_path, xlsx_copy_path})
-        Logger.info("Copied XLSX to: #{xlsx_copy_path}")
+        # Stream XLSX with ElixirXlsx - TRUE streaming without loading all data
+        Logger.info("Opening XLSX with ElixirXlsx for streaming...")
 
-        # Enqueue jobs ONE BY ONE without loading all rows into memory
-        # Don't even count total rows - just iterate through ETS table
-        Logger.info("Opening XLSX and enqueuing jobs one by one...")
+        {:ok, xlsx} = Elixir.Xlsx.open(file_path)
 
-        {:ok, pid} = Xlsxir.multi_extract(file_path, 0)
+        # Get first sheet
+        [sheet | _] = Elixir.Xlsx.sheets(xlsx)
 
-        # Get first key to start iteration
-        first_key = :ets.first(pid)
+        Logger.info("Streaming rows and enqueuing jobs one by one...")
 
-        row_count = enqueue_jobs_from_ets(pid, first_key, 2, table_name, execution_id, 0)
+        # Stream rows, skip header, enqueue one job at a time
+        # Since we're streaming, we can safely pass row_data in args without OOM
+        row_count =
+          sheet
+          |> Elixir.Xlsx.stream()
+          |> Stream.drop(1)  # Skip header
+          |> Stream.with_index(2)  # Start from row 2 (after header)
+          |> Enum.reduce(0, fn {row_data, row_index}, count ->
+            # Enqueue single job with row data
+            # Safe to pass row_data because we're creating jobs one at a time via streaming
+            ProcessDebentureRowJob.new(%{
+              row_index: row_index,
+              row_data: row_data,
+              ets_table: Atom.to_string(table_name),
+              execution_id: execution_id
+            })
+            |> Oban.insert!()
 
-        Xlsxir.close(pid)
+            # Periodic GC and logging
+            if rem(count, 50) == 0 do
+              :erlang.garbage_collect()
+              Process.sleep(10)
+
+              if rem(count, 200) == 0 do
+                Logger.info("Enqueued #{count} jobs so far...")
+              end
+            end
+
+            count + 1
+          end)
+
+        Elixir.Xlsx.close(xlsx)
 
         Logger.info("Enqueued #{row_count} jobs total")
 
         # Store total job count in ETS for cleanup tracking
         :ets.insert(table_name, {:total_jobs, row_count})
         :ets.insert(table_name, {:completed_jobs, 0})
-
-        Logger.info("Enqueued #{row_count} row processing jobs (streamed)")
 
         {:ok, row_count}
       rescue
@@ -172,43 +194,6 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
       nil ->
         raise "Could not find sheet1.xml in XLSX file"
-    end
-  end
-
-  # Recursively iterate through ETS table and enqueue jobs one by one
-  # This avoids loading row count or creating lists/streams in memory
-  defp enqueue_jobs_from_ets(_pid, :'$end_of_table', _row_idx, _table_name, _execution_id, count) do
-    Logger.info("Reached end of ETS table, total jobs enqueued: #{count}")
-    count
-  end
-
-  defp enqueue_jobs_from_ets(pid, key, row_idx, table_name, execution_id, count) do
-    # Skip header (row 1)
-    if key == 1 do
-      next_key = :ets.next(pid, key)
-      enqueue_jobs_from_ets(pid, next_key, row_idx, table_name, execution_id, count)
-    else
-      # Enqueue single job for this row
-      ProcessDebentureRowJob.new(%{
-        row_index: row_idx,
-        ets_table: Atom.to_string(table_name),
-        execution_id: execution_id
-      })
-      |> Oban.insert!()
-
-      # Periodic GC and logging to manage memory
-      if rem(count, 50) == 0 do
-        :erlang.garbage_collect()
-        Process.sleep(10)
-
-        if rem(count, 200) == 0 do
-          Logger.info("Enqueued #{count} jobs so far...")
-        end
-      end
-
-      # Continue iteration
-      next_key = :ets.next(pid, key)
-      enqueue_jobs_from_ets(pid, next_key, row_idx + 1, table_name, execution_id, count + 1)
     end
   end
 
