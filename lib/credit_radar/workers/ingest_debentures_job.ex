@@ -98,17 +98,38 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         Logger.info("Created ETS table: #{table_name}")
 
         # Stream XLSX and enqueue jobs in batches
-        Logger.info("Streaming XLSX with Xlsxir.stream_list...")
+        Logger.info("Opening XLSX with Xlsxir.multi_extract...")
+        {:ok, pid} = Xlsxir.multi_extract(file_path, 0)
+
+        Logger.info("Streaming rows from ETS table...")
+
+        # Create custom stream from ETS table
+        stream = Stream.resource(
+          fn -> :ets.first(pid) end,
+          fn
+            :'$end_of_table' -> {:halt, nil}
+            key ->
+              case :ets.lookup(pid, key) do
+                [{^key, row_data}] ->
+                  next_key = :ets.next(pid, key)
+                  {[{key, row_data}], next_key}
+                [] ->
+                  next_key = :ets.next(pid, key)
+                  {[], next_key}
+              end
+          end,
+          fn _ -> :ok end
+        )
 
         row_count =
-          Xlsxir.stream_list(file_path, 0, [])  # Stream from sheet index 0 with empty options
-          |> Stream.drop(1)  # Skip header row
+          stream
+          |> Stream.drop(1)  # Skip header (row 1)
           |> Stream.with_index(2)  # Start from row 2
           |> Stream.chunk_every(100)  # Process in batches of 100
           |> Stream.each(fn chunk ->
             # Create jobs for this batch
             jobs =
-              Enum.map(chunk, fn {row_data, row_index} ->
+              Enum.map(chunk, fn {{_key, row_data}, row_index} ->
                 ProcessDebentureRowJob.new(%{
                   row_index: row_index,
                   row_data: row_data,
@@ -127,6 +148,8 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
             Logger.info("Enqueued batch of #{length(jobs)} jobs")
           end)
           |> Enum.reduce(0, fn _, acc -> acc + 100 end)
+
+        Xlsxir.close(pid)
 
         Logger.info("Enqueued #{row_count} jobs total")
 
