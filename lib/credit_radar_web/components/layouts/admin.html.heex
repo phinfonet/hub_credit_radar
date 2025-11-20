@@ -41,22 +41,22 @@
   <:sidebar>
     <% nav_items = HubCreditRadarWeb.Components.AdminNavigation.nav_items() %>
 
-    <div class="flex h-full flex-col justify-between bg-[#0F172A] px-4 pb-6 pt-8">
+    <div class="flex h-full flex-col justify-between px-4 pb-6 pt-8">
       <div>
         <p class="mb-6 text-xs font-semibold uppercase tracking-[0.35em] text-white/40">
           Fixed Income Desk
         </p>
-        <div class="space-y-2">
+        <ul class="space-y-2">
           <%= for item <- nav_items do %>
             <% is_active = Backpex.Router.active?(@current_url, item.path) %>
             <Backpex.HTML.Layout.sidebar_item
               current_url={@current_url}
               navigate={item.path}
               class={[
-                "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
+                "!bg-transparent group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
                 if(is_active,
-                  do: "#{item.active_bg} text-white shadow-lg #{item.active_shadow} ring-1 #{item.active_ring}",
-                  else: "text-white/60 hover:bg-white/5 hover:text-white bg-transparent"
+                  do: "#{item.active_bg} !text-white shadow-lg #{item.active_shadow} ring-1 #{item.active_ring}",
+                  else: "text-white/60 hover:bg-white/5 hover:text-white"
                 )
               ]}
             >
@@ -75,7 +75,7 @@
               </div>
             </Backpex.HTML.Layout.sidebar_item>
           <% end %>
-        </div>
+        </ul>
       </div>
 
       <footer class="rounded-xl bg-white/5 p-4 text-xs leading-relaxed text-white/70 shadow-inner shadow-black/20">
