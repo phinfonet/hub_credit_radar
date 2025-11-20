@@ -126,7 +126,7 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
           |> Stream.drop(1)  # Skip header (row 1)
           |> Stream.with_index(2)  # Start from row 2
           |> Stream.chunk_every(10)  # Process in VERY small batches of 10
-          |> Stream.each(fn chunk ->
+          |> Enum.reduce(0, fn chunk, acc ->
             # Create jobs for this batch
             jobs =
               Enum.map(chunk, fn {{_key, row_data}, row_index} ->
@@ -145,13 +145,17 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
             :erlang.garbage_collect()
             Process.sleep(100)
 
-            if rem(length(jobs), 50) == 0 do
-              Logger.info("Enqueued batch of #{length(jobs)} jobs")
-            end
-          end)
-          |> Enum.reduce(0, fn _, acc -> acc + 10 end)
+            new_count = acc + length(jobs)
 
-        Xlsxir.close(pid)
+            if rem(new_count, 100) == 0 do
+              Logger.info("Enqueued #{new_count} jobs so far...")
+            end
+
+            new_count
+          end)
+
+        # Don't call Xlsxir.close - causes CaseClauseError
+        # PID will be cleaned up automatically
 
         Logger.info("Enqueued #{row_count} jobs total")
 
