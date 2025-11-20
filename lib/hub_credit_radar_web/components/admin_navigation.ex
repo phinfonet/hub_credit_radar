@@ -174,4 +174,19 @@ defmodule HubCreditRadarWeb.Components.AdminNavigation do
       "#{base_classes} bg-white/10 text-white/50 group-hover:text-white"
     end
   end
+
+  @doc """
+  Returns just the gradient classes for an icon.
+  """
+  def icon_gradient_classes(item) do
+    [
+      "bg-gradient-to-br",
+      item.gradient_from,
+      item.gradient_via,
+      item.gradient_to,
+      item.icon_text_color
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+  end
 end
