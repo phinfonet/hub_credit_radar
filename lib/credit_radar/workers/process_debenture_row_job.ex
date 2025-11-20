@@ -201,6 +201,8 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
 
   defp to_decimal(nil), do: nil
   defp to_decimal(value) when is_number(value), do: Decimal.from_float(value)
+  # Xlsxir sometimes returns [style, value] format
+  defp to_decimal([_style, value]) when is_number(value), do: Decimal.from_float(value)
   defp to_decimal(_), do: nil
 
   defp to_integer(nil), do: nil
