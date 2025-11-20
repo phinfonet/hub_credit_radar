@@ -302,6 +302,13 @@
                 Retorno Esperado{sort_icon(assigns, :expected_return)}
               </th>
               <th
+                class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="grade"
+              >
+                Grade{sort_icon(assigns, :grade)}
+              </th>
+              <th
                 class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
                 phx-click="sort"
                 phx-value-field="issuer_quality"
@@ -313,21 +320,7 @@
                 phx-click="sort"
                 phx-value-field="capital_structure"
               >
-                Estrutura de Capital{sort_icon(assigns, :capital_structure)}
-              </th>
-              <th
-                class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors"
-                phx-click="sort"
-                phx-value-field="grade"
-              >
-                Grade{sort_icon(assigns, :grade)}
-              </th>
-              <th
-                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
-                phx-click="sort"
-                phx-value-field="rating_hub"
-              >
-                Rating Hub{sort_icon(assigns, :rating_hub)}
+                Estrutura{sort_icon(assigns, :capital_structure)}
               </th>
               <th
                 class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
@@ -341,7 +334,14 @@
                 phx-click="sort"
                 phx-value-field="credit_spread"
               >
-                Prêmio de Risco{sort_icon(assigns, :credit_spread)}
+                Prêmio{sort_icon(assigns, :credit_spread)}
+              </th>
+              <th
+                class="px-4 py-3 text-right group cursor-pointer hover:bg-gray-800/50 transition-colors"
+                phx-click="sort"
+                phx-value-field="rating_hub"
+              >
+                Rating Hub{sort_icon(assigns, :rating_hub)}
               </th>
               <th
                 class="px-4 py-3 text-left group cursor-pointer hover:bg-gray-800/50 transition-colors"
@@ -394,6 +394,15 @@
                 <td class="px-4 py-3 text-sm text-right text-gray-200 font-semibold">
                   {format_decimal(security.expected_return)}%
                 </td>
+                <td class="px-4 py-3 text-sm">
+                  <%= if security.grade do %>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-700 text-gray-200 uppercase">
+                      {to_string(security.grade)}
+                    </span>
+                  <% else %>
+                    <span class="text-gray-500 text-xs">-</span>
+                  <% end %>
+                </td>
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
                   <%= if security.issuer_quality do %>
                     <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.issuer_quality)}"}>
@@ -412,24 +421,6 @@
                     <span class="text-gray-500 text-xs">-</span>
                   <% end %>
                 </td>
-                <td class="px-4 py-3 text-sm">
-                  <%= if security.grade do %>
-                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-700 text-gray-200 uppercase">
-                      {to_string(security.grade)}
-                    </span>
-                  <% else %>
-                    <span class="text-gray-500 text-xs">-</span>
-                  <% end %>
-                </td>
-                <td class="px-4 py-3 text-sm text-right">
-                  <%= if security.rating_hub do %>
-                    <span class="font-bold text-lg bg-gradient-to-r from-teal-500 to-blue-500 bg-clip-text text-transparent">
-                      {format_decimal(security.rating_hub)}
-                    </span>
-                  <% else %>
-                    <span class="text-gray-500 text-xs">-</span>
-                  <% end %>
-                </td>
                 <td class="px-4 py-3 text-sm text-right text-gray-200">
                   <%= if security.solvency_ratio do %>
                     <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.solvency_ratio)}"}>
@@ -443,6 +434,15 @@
                   <%= if security.credit_spread do %>
                     <span class={"px-2 py-1 rounded-full text-xs font-semibold #{rating_color_class(security.credit_spread)}"}>
                       {security.credit_spread}
+                    </span>
+                  <% else %>
+                    <span class="text-gray-500 text-xs">-</span>
+                  <% end %>
+                </td>
+                <td class="px-4 py-3 text-sm text-right">
+                  <%= if security.rating_hub do %>
+                    <span class="font-bold text-lg bg-gradient-to-r from-teal-500 to-blue-500 bg-clip-text text-transparent">
+                      {format_decimal(security.rating_hub)}
                     </span>
                   <% else %>
                     <span class="text-gray-500 text-xs">-</span>
