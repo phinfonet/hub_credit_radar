@@ -107,13 +107,23 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         stream = Stream.resource(
           fn -> :ets.first(pid) end,
           fn
-            :'$end_of_table' -> {:halt, nil}
+            :'$end_of_table' ->
+              {:halt, nil}
+
             key ->
               case :ets.lookup(pid, key) do
-                [{^key, row_data}] ->
+                # Regular row data
+                [{^key, row_data}] when is_list(row_data) ->
                   next_key = :ets.next(pid, key)
                   {[{key, row_data}], next_key}
-                [] ->
+
+                # Metadata entries (e.g., {:info, :worksheet_name, nil})
+                [{:info, _, _}] ->
+                  next_key = :ets.next(pid, key)
+                  {[], next_key}
+
+                # Empty or other entries
+                _ ->
                   next_key = :ets.next(pid, key)
                   {[], next_key}
               end
