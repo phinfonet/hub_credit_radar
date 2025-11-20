@@ -60,8 +60,13 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
     Task.start_link(__MODULE__, :run, [execution, file_path])
   end
 
+  # Size of each batch to process (to avoid OOM issues with large files)
+  @batch_size 250
+
   @doc """
   Executes the Debentures XLS ingestion pipeline.
+
+  Uses SAX-based XML parsing for memory-efficient inline string extraction.
   """
   def run(execution \\ nil, file_path) do
     Logger.info(
@@ -69,8 +74,7 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
     )
 
     result =
-      with {:ok, operations} <- parse_file(file_path),
-           {:ok, stats} <- persist_operations(operations) do
+      with {:ok, stats} <- parse_and_persist_file_in_batches(file_path, execution) do
         Logger.info("✅ Debentures XLS ingestion completed successfully: #{inspect(stats)}")
         _ = report_intermediate_progress(execution, 100)
         {:ok, stats}
@@ -84,7 +88,117 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   end
 
   @doc """
+  Parses and persists the XLS/XLSX file in batches to avoid OOM issues.
+  """
+  defp parse_and_persist_file_in_batches(file_path, execution) do
+    unless File.exists?(file_path) do
+      {:error, :file_not_found}
+    else
+      try do
+        # Read inlineStr cells using custom XML parser (this is memory-efficient as it's just metadata)
+        Logger.info("Extracting inline string cells from XLSX...")
+        inline_str_data = extract_inline_str_cells(file_path)
+
+        # Read file with xlsxir
+        Logger.info("Opening XLSX file for batch processing...")
+        {:ok, pid} = Xlsxir.multi_extract(file_path, 0)
+
+        # Get total row count for progress tracking
+        rows = Xlsxir.get_list(pid)
+        total_rows = length(rows) - 1  # Exclude header
+        Logger.info("Total rows to process: #{total_rows}")
+
+        # Process in batches to avoid memory issues
+        stats =
+          rows
+          # Skip header row
+          |> Enum.drop(1)
+          # Start from row 2 (after header)
+          |> Stream.with_index(2)
+          # Process in chunks
+          |> Stream.chunk_every(@batch_size)
+          |> Stream.with_index(1)
+          |> Enum.reduce(%{created: 0, updated: 0, skipped: 0, errors: []}, fn {batch, batch_num}, acc ->
+            batch_start = (batch_num - 1) * @batch_size + 1
+            batch_end = min(batch_num * @batch_size, total_rows)
+
+            Logger.info("Processing batch #{batch_num}: rows #{batch_start}-#{batch_end} of #{total_rows}")
+
+            # Parse batch
+            operations =
+              batch
+              |> Enum.map(fn {row, row_index} ->
+                parse_row_with_inline_str(row, row_index, inline_str_data)
+              end)
+              |> Enum.reject(&is_nil/1)
+
+            # Persist batch
+            batch_stats = persist_batch(operations)
+
+            # Update progress
+            progress = min(100, div(batch_end * 100, total_rows))
+            _ = report_intermediate_progress(execution, progress)
+
+            # Merge stats
+            merged = %{
+              created: acc.created + batch_stats.created,
+              updated: acc.updated + batch_stats.updated,
+              skipped: acc.skipped + batch_stats.skipped,
+              errors: acc.errors ++ batch_stats.errors
+            }
+
+            # Force garbage collection after each batch to free memory
+            :erlang.garbage_collect()
+
+            Logger.info("Batch #{batch_num} complete - created: #{batch_stats.created}, updated: #{batch_stats.updated}, skipped: #{batch_stats.skipped}, errors: #{length(batch_stats.errors)}")
+
+            merged
+          end)
+
+        Xlsxir.close(pid)
+
+        Logger.info(
+          "Debentures XLS ingestion completed - Total: created=#{stats.created}, updated=#{stats.updated}, skipped=#{stats.skipped}, errors=#{length(stats.errors)}"
+        )
+
+        case stats.errors do
+          [] -> {:ok, stats}
+          errors -> {:error, {:persistence_failed, errors}}
+        end
+      rescue
+        error ->
+          Logger.error("Failed to parse XLS file: #{inspect(error)}")
+          {:error, {:parse_error, error}}
+      end
+    end
+  end
+
+  defp persist_batch(operations) when is_list(operations) do
+    Enum.reduce(operations, %{created: 0, updated: 0, skipped: 0, errors: []}, fn operation, acc ->
+      case persist_operation(operation) do
+        {:ok, :created} ->
+          %{acc | created: acc.created + 1}
+
+        {:ok, :updated} ->
+          %{acc | updated: acc.updated + 1}
+
+        {:skip, reason} ->
+          Logger.debug(
+            "Skipping Debentures security persistence because #{inspect(reason)}: #{inspect(operation)}"
+          )
+          %{acc | skipped: acc.skipped + 1}
+
+        {:error, reason} ->
+          %{acc | errors: acc.errors ++ [{:error, reason, operation}]}
+      end
+    end)
+  end
+
+  @doc """
   Parses an XLS/XLSX file and returns a list of operations ready to be persisted.
+
+  NOTE: This function loads the entire file in memory and is kept for backward compatibility.
+  For large files, use run/2 instead which processes in batches.
   """
   def parse_file(file_path) do
     unless File.exists?(file_path) do
@@ -134,21 +248,58 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
   end
 
   defp extract_inline_str_cells(file_path) do
-    # Unzip the XLSX file and read the sheet XML
-    {:ok, files} = :zip.unzip(String.to_charlist(file_path), [:memory])
+    # Extract only sheet1.xml without loading other files
+    charlist_path = String.to_charlist(file_path)
 
-    # Find the sheet1.xml file
-    {_, sheet_xml} =
-      Enum.find(files, fn {name, _} ->
-        List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
+    {:ok, file_list} = :zip.list_dir(charlist_path)
+
+    sheet_file =
+      Enum.find(file_list, fn
+        {:zip_file, name, _info, _comment, _offset, _comp_size} ->
+          List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
+
+        _ ->
+          false
       end)
 
-    # Parse all rows and extract inlineStr values
+    case sheet_file do
+      {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
+        # Extract only this file
+        {:ok, [{^sheet_name, sheet_xml}]} =
+          :zip.extract(charlist_path, [
+            {:file_list, [sheet_name]},
+            :memory
+          ])
+
+        # Parse with xpath filter (only rows with inline strings)
+        result = extract_inline_str_from_xml(sheet_xml)
+
+        # Force GC immediately
+        :erlang.garbage_collect()
+
+        Logger.info("Extracted inline strings from #{map_size(result)} rows")
+        result
+
+      nil ->
+        Logger.warning("Could not find sheet1.xml in XLSX file")
+        %{}
+    end
+  rescue
+    error ->
+      Logger.error("Failed to extract inlineStr cells: #{inspect(error)}")
+      Logger.error("Stacktrace: #{inspect(__STACKTRACE__)}")
+      # Return empty map to allow processing to continue without inline strings
+      %{}
+  end
+
+  defp extract_inline_str_from_xml(sheet_xml) do
+    # Use xpath to extract only rows that have inlineStr cells (./c/is)
+    # This is much more efficient than parsing all rows
     sheet_xml
-    |> xpath(~x"//row"l,
+    |> xpath(~x"//row[c/is]"l,
       r: ~x"./@r"s,
       cells: [
-        ~x"./c"l,
+        ~x"./c[is]"l,  # Only cells with inlineStr
         ref: ~x"./@r"s,
         value: ~x"./is/t/text()"s
       ]
@@ -160,7 +311,6 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
         row.cells
         |> Enum.reduce(%{}, fn cell, cell_acc ->
           if cell.value != "" do
-            # Extract column letter from cell reference (e.g., "A2" -> "A")
             col = cell.ref |> String.replace(~r/\d+/, "")
             Map.put(cell_acc, col, cell.value)
           else
@@ -174,10 +324,46 @@ defmodule CreditRadar.Ingestions.Tasks.IngestDebenturesXls do
         acc
       end
     end)
-  rescue
-    error ->
-      Logger.warning("Failed to extract inlineStr cells: #{inspect(error)}")
-      %{}
+  end
+
+  defp parse_inline_str_xml(sheet_xml) do
+    result =
+      sheet_xml
+      |> xpath(~x"//row"l,
+        r: ~x"./@r"s,
+        cells: [
+          ~x"./c"l,
+          ref: ~x"./@r"s,
+          value: ~x"./is/t/text()"s
+        ]
+      )
+      |> Enum.reduce(%{}, fn row, acc ->
+        row_num = String.to_integer(row.r)
+
+        cells_map =
+          row.cells
+          |> Enum.reduce(%{}, fn cell, cell_acc ->
+            if cell.value != "" do
+              # Extract column letter from cell reference (e.g., "A2" -> "A")
+              col = cell.ref |> String.replace(~r/\d+/, "")
+              Map.put(cell_acc, col, cell.value)
+            else
+              cell_acc
+            end
+          end)
+
+        if map_size(cells_map) > 0 do
+          Map.put(acc, row_num, cells_map)
+        else
+          acc
+        end
+      end)
+
+    # Force garbage collection to free XML parsing memory
+    :erlang.garbage_collect()
+
+    Logger.info("Extracted inline strings from #{map_size(result)} rows")
+    result
   end
 
   defp parse_row_with_inline_str(row, row_index, inline_str_data)

@@ -9,7 +9,7 @@ defmodule CreditRadar.FixedIncome.Security do
     field :issuing, :string
     field :benchmark_index, :string
     field :coupon_rate, :decimal
-    field :correction_rate, :decimal
+    field :correction_rate, :string
     field :expected_return, :decimal
     field :credit_risk, :string
     field :code, :string
@@ -44,7 +44,7 @@ defmodule CreditRadar.FixedIncome.Security do
       :sync_source
     ])
     |> normalize_string_fields()
-    |> validate_required([:issuer, :security_type, :series, :issuing, :code, :duration])
+    |> validate_required([:issuer, :security_type, :series, :issuing, :code])
   end
 
   defp normalize_string_fields(changeset) do
@@ -56,7 +56,8 @@ defmodule CreditRadar.FixedIncome.Security do
       :series,
       :issuing,
       :benchmark_index,
-      :ntnb_reference
+      :ntnb_reference,
+      :correction_rate
     ]
 
     Enum.reduce(string_fields, changeset, fn field, acc ->

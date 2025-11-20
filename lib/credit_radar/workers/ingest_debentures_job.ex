@@ -1,0 +1,229 @@
+defmodule CreditRadar.Workers.IngestDebenturesJob do
+  @moduledoc """
+  Oban worker for processing debenture XLS file uploads.
+
+  This job reads the XLSX file and enqueues individual ProcessDebentureRowJob
+  for each row. This approach avoids OOM by distributing work across many small jobs.
+  """
+  use Oban.Worker, queue: :debentures, max_attempts: 3
+
+  alias CreditRadar.Ingestions
+  alias CreditRadar.Workers.ProcessDebentureRowJob
+  alias CreditRadar.Repo
+  alias Decimal
+
+  require Logger
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{args: %{"execution_id" => execution_id, "file_path" => file_path}}) do
+    Logger.info("🟢 Starting IngestDebenturesJob for execution ##{execution_id}")
+    Logger.info("🟢 File path: #{file_path}")
+
+    # Load the execution record
+    execution = Repo.get!(Ingestions.Execution, execution_id)
+
+    # Mark execution as running
+    {:ok, execution} =
+      execution
+      |> Ingestions.execution_update_changeset(%{"status" => "running"})
+      |> Repo.update()
+
+    Logger.info("🟢 Execution ##{execution_id} marked as running")
+
+    # Parse file and enqueue row jobs
+    try do
+      case parse_and_enqueue_rows(file_path, execution_id) do
+        {:ok, row_count} ->
+          Logger.info("🟢 IngestDebenturesJob completed: enqueued #{row_count} row jobs for execution ##{execution_id}")
+
+          # Mark execution as completed (row jobs will process in background)
+          {:ok, _execution} =
+            execution
+            |> Ingestions.execution_update_changeset(%{
+              "status" => "completed",
+              "progress" => 100,
+              "finished_at" => DateTime.utc_now()
+            })
+            |> Repo.update()
+
+          :ok
+
+        {:error, reason} = error ->
+          Logger.error("🔴 IngestDebenturesJob failed for execution ##{execution_id}")
+          Logger.error("🔴 Error: #{inspect(reason)}")
+
+          # Mark execution as failed
+          {:ok, _execution} =
+            execution
+            |> Ingestions.execution_update_changeset(%{
+              "status" => "failed",
+              "finished_at" => DateTime.utc_now()
+            })
+            |> Repo.update()
+
+          error
+      end
+    after
+      # Clean up the uploaded file
+      Logger.info("🟢 Cleaning up file: #{file_path}")
+      File.rm(file_path)
+    end
+  end
+
+  @doc """
+  Parses XLSX file and enqueues jobs in batches using streaming.
+
+  Uses Xlsxir.stream_list for true lazy streaming, chunks into batches,
+  and enqueues jobs with Oban.insert_all to minimize memory pressure.
+  """
+  defp parse_and_enqueue_rows(file_path, execution_id) do
+    unless File.exists?(file_path) do
+      {:error, :file_not_found}
+    else
+      try do
+        # Create temp directory
+        tmp_dir = "/tmp/debentures-#{execution_id}"
+        File.mkdir_p!(tmp_dir)
+        Logger.info("Created temporary directory: #{tmp_dir}")
+
+        # Extract sheet1.xml to temporary file (for inline strings)
+        Logger.info("Extracting sheet1.xml to temporary file...")
+        xml_file_path = extract_sheet_xml_to_file(file_path, tmp_dir)
+        Logger.info("Extracted sheet1.xml to: #{xml_file_path}")
+
+        # Create ETS table to share XML file path with row jobs
+        table_name = :"debentures_xml_#{execution_id}"
+        :ets.new(table_name, [:named_table, :public, :set])
+        :ets.insert(table_name, {:xml_file_path, xml_file_path})
+        Logger.info("Created ETS table: #{table_name}")
+
+        # Stream XLSX and enqueue jobs in batches
+        Logger.info("Opening XLSX with Xlsxir.multi_extract...")
+        {:ok, pid} = Xlsxir.multi_extract(file_path, 0)
+
+        Logger.info("Streaming rows from ETS table...")
+
+        # Create custom stream from ETS table
+        stream = Stream.resource(
+          fn -> :ets.first(pid) end,
+          fn
+            :'$end_of_table' ->
+              {:halt, nil}
+
+            key ->
+              case :ets.lookup(pid, key) do
+                # Regular row data
+                [{^key, row_data}] when is_list(row_data) ->
+                  next_key = :ets.next(pid, key)
+                  {[{key, row_data}], next_key}
+
+                # Metadata entries (e.g., {:info, :worksheet_name, nil})
+                [{:info, _, _}] ->
+                  next_key = :ets.next(pid, key)
+                  {[], next_key}
+
+                # Empty or other entries
+                _ ->
+                  next_key = :ets.next(pid, key)
+                  {[], next_key}
+              end
+          end,
+          fn _ -> :ok end
+        )
+
+        row_count =
+          stream
+          |> Stream.drop(1)  # Skip header (row 1)
+          |> Stream.with_index(2)  # Start from row 2
+          |> Stream.chunk_every(10)  # Process in VERY small batches of 10
+          |> Enum.reduce(0, fn chunk, acc ->
+            # Create jobs for this batch
+            jobs =
+              Enum.map(chunk, fn {{_key, row_data}, row_index} ->
+                ProcessDebentureRowJob.new(%{
+                  row_index: row_index,
+                  row_data: row_data,
+                  ets_table: Atom.to_string(table_name),
+                  execution_id: execution_id
+                })
+              end)
+
+            # Insert batch
+            Oban.insert_all(jobs)
+
+            # Aggressive GC and longer sleep between batches
+            :erlang.garbage_collect()
+            Process.sleep(100)
+
+            new_count = acc + length(jobs)
+
+            if rem(new_count, 100) == 0 do
+              Logger.info("Enqueued #{new_count} jobs so far...")
+            end
+
+            new_count
+          end)
+
+        # Don't call Xlsxir.close - causes CaseClauseError
+        # PID will be cleaned up automatically
+
+        Logger.info("Enqueued #{row_count} jobs total")
+
+        # Store total job count in ETS for cleanup tracking
+        :ets.insert(table_name, {:total_jobs, row_count})
+        :ets.insert(table_name, {:completed_jobs, 0})
+
+        {:ok, row_count}
+      rescue
+        error ->
+          Logger.error("Failed to parse XLSX file: #{inspect(error)}")
+          {:error, {:parse_error, error}}
+      end
+    end
+  end
+
+  # Extract sheet1.xml to a temporary file to avoid loading entire XML in memory
+  defp extract_sheet_xml_to_file(file_path, tmp_dir) do
+    charlist_path = String.to_charlist(file_path)
+    {:ok, file_list} = :zip.list_dir(charlist_path)
+
+    sheet_file =
+      Enum.find(file_list, fn
+        {:zip_file, name, _info, _comment, _offset, _comp_size} ->
+          List.to_string(name) =~ ~r/xl\/worksheets\/sheet1\.xml$/
+        _ ->
+          false
+      end)
+
+    case sheet_file do
+      {:zip_file, sheet_name, _info, _comment, _offset, _comp_size} ->
+        Logger.info("Extracting #{List.to_string(sheet_name)} to memory first...")
+
+        # Extract to memory first (only sheet1.xml, ~5-10MB)
+        {:ok, [{^sheet_name, sheet_xml_content}]} =
+          :zip.extract(charlist_path, [
+            {:file_list, [sheet_name]},
+            :memory
+          ])
+
+        Logger.info("Extracted #{byte_size(sheet_xml_content)} bytes to memory")
+
+        # Save to file for jobs to read
+        xml_path = Path.join(tmp_dir, "sheet1.xml")
+        File.write!(xml_path, sheet_xml_content)
+
+        Logger.info("Saved sheet XML to: #{xml_path}, size: #{File.stat!(xml_path).size} bytes")
+
+        # Force GC to free the XML content from memory
+        :erlang.garbage_collect()
+
+        xml_path
+
+      nil ->
+        raise "Could not find sheet1.xml in XLSX file"
+    end
+  end
+
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(30)
+end

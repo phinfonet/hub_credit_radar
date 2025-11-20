@@ -9,8 +9,10 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     layout: {CreditRadarWeb.Layouts, :admin}
 
   alias CreditRadarWeb.Live.Admin.FixedIncomeAssessmentLive
+  alias CreditRadar.Ingestions
   alias CreditRadar.Ingestions.Tasks.IngestCriCraXls
   alias CreditRadar.Ingestions.Tasks.IngestDebenturesXls
+  alias CreditRadar.Repo
 
   require Logger
 
@@ -173,6 +175,12 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     use Backpex.ResourceAction
     import Phoenix.LiveView, only: [put_flash: 3, push_navigate: 2]
 
+    alias CreditRadar.Ingestions
+    alias CreditRadar.Workers.IngestDebenturesJob
+    alias CreditRadar.Repo
+
+    require Logger
+
     @impl Backpex.ResourceAction
     def title, do: "Upload XLS/XLSX"
 
@@ -211,7 +219,9 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
     end
 
     @impl Backpex.ResourceAction
-    def handle(socket, _params) do
+    def handle(socket, params) do
+      Logger.info("🔵 UploadDebenturesXlsAction.handle called with params: #{inspect(params)}")
+
       {:ok,
        socket
        |> put_flash(
@@ -220,35 +230,78 @@ defmodule CreditRadarWeb.Live.Admin.FixedIncomeSecurityLive do
        )}
     end
 
-    defp consume_upload(_, entry, %{path: path}, _) do
+    defp consume_upload(socket, entry, %{path: path}, action) do
+      Logger.info("🔵 UploadDebenturesXlsAction.consume_upload called")
+      Logger.info("🔵   - entry: #{inspect(entry)}")
+      Logger.info("🔵   - path: #{path}")
+
       uuid = Map.get(entry, :uuid, Ecto.UUID.generate())
       name = Map.get(entry, :client_name, "")
       dest = Path.join(System.tmp_dir!(), "#{uuid}#{Path.extname(name)}")
-      File.cp!(path, dest)
-      start_async_ingestion(dest)
-      {:ok, nil}
+
+      Logger.info("🔵 Copying file from #{path} to #{dest}")
+
+      try do
+        File.cp!(path, dest)
+        Logger.info("✅ File copied successfully to #{dest}")
+        Logger.info("🔵 File size: #{File.stat!(dest).size} bytes")
+        start_async_ingestion(dest)
+        Logger.info("✅ start_async_ingestion returned successfully")
+        {:ok, nil}
+      rescue
+        error ->
+          Logger.error("❌ Error in consume_upload: #{inspect(error)}")
+          Logger.error("❌ Stacktrace: #{inspect(__STACKTRACE__)}")
+          {:error, "Failed to process upload"}
+      end
     end
 
     defp start_async_ingestion(file_path) do
-      Task.Supervisor.start_child(CreditRadar.Ingestions.TaskSupervisor, fn ->
-        Logger.info("⏳ Starting to process Debentures XLS file: #{file_path}")
+      Logger.info("🟢 start_async_ingestion called with file_path: #{file_path}")
+      Logger.info("🟢 File exists? #{File.exists?(file_path)}")
 
-        try do
-          case IngestDebenturesXls.run(nil, file_path) do
-            {:ok, stats} ->
-              total = stats.created + stats.updated
+      # Create execution record for tracking progress
+      Logger.info("🟢 Creating execution record...")
 
-              Logger.info(
-                "✅ Debentures XLS ingestion completed successfully: #{total} títulos (#{stats.created} novos, #{stats.updated} atualizados, #{stats.skipped} pulados)"
-              )
+      execution_result =
+        %Ingestions.Execution{}
+        |> Ingestions.execution_create_changeset(%{
+          "kind" => "debentures",
+          "trigger" => "upload",
+          "status" => "pending"
+        })
+        |> Repo.insert()
+
+      case execution_result do
+        {:ok, execution} ->
+          Logger.info("✅ Created execution ##{execution.id} for Debentures XLS upload")
+          Logger.info("🟢 Enqueuing Oban job...")
+
+          # Enqueue Oban job to process the file
+          job_result =
+            %{execution_id: execution.id, file_path: file_path}
+            |> IngestDebenturesJob.new()
+            |> Oban.insert()
+
+          case job_result do
+            {:ok, job} ->
+              Logger.info("✅ Oban job ##{job.id} enqueued for execution ##{execution.id}")
 
             {:error, reason} ->
-              Logger.error("Failed to process Debentures XLS file: #{inspect(reason)}")
+              Logger.error("❌ Failed to enqueue Oban job: #{inspect(reason)}")
+              # Clean up execution and file on error
+              Repo.delete(execution)
+              File.rm(file_path)
           end
-        after
+
+        {:error, changeset} ->
+          Logger.error("❌ Failed to create execution for upload")
+          Logger.error("❌   - Errors: #{inspect(changeset.errors)}")
+          Logger.error("❌   - Full changeset: #{inspect(changeset)}")
           File.rm(file_path)
-        end
-      end)
+      end
+
+      Logger.info("🟢 start_async_ingestion completed")
     end
   end
 end

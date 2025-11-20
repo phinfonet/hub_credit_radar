@@ -42,6 +42,7 @@ defmodule CreditRadarWeb.Router do
   end
 
   import Backpex.Router
+  import Oban.Web.Router
 
   scope "/admin", CreditRadarWeb do
     pipe_through :browser
@@ -54,6 +55,8 @@ defmodule CreditRadarWeb.Router do
     pipe_through [:browser, :admin_protected]
 
     delete "/logout", AdminSessionController, :delete
+
+    oban_dashboard "/oban"
 
     live_session :admin, on_mount: Backpex.InitAssigns do
       live_resources "/securities", Live.Admin.FixedIncomeSecurityLive,
