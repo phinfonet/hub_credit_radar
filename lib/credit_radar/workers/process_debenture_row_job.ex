@@ -110,25 +110,38 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
   # Track completed jobs and cleanup when all jobs are done
   defp cleanup_if_all_jobs_completed(ets_table, xml_file_path) do
     try do
-      # Atomically increment completed counter
-      completed = :ets.update_counter(ets_table, :completed_jobs, {2, 1})
-      [{:total_jobs, total}] = :ets.lookup(ets_table, :total_jobs)
+      # Check if table still exists before trying to update
+      case :ets.whereis(ets_table) do
+        :undefined ->
+          # Table already deleted, nothing to do
+          :ok
 
-      if completed >= total do
-        Logger.info("All #{total} jobs completed, cleaning up XML file and ETS table")
+        _pid ->
+          # Atomically increment completed counter
+          completed = :ets.update_counter(ets_table, :completed_jobs, {2, 1})
 
-        # Delete temporary XML file and directory
-        xml_dir = Path.dirname(xml_file_path)
-        File.rm_rf!(xml_dir)
-        Logger.info("Deleted temporary directory: #{xml_dir}")
+          case :ets.lookup(ets_table, :total_jobs) do
+            [{:total_jobs, total}] when completed >= total ->
+              Logger.info("All #{total} jobs completed, cleaning up XML file and ETS table")
 
-        # Delete ETS table
-        :ets.delete(ets_table)
-        Logger.info("Deleted ETS table: #{ets_table}")
+              # Delete temporary XML file and directory
+              xml_dir = Path.dirname(xml_file_path)
+              File.rm_rf!(xml_dir)
+              Logger.info("Deleted temporary directory: #{xml_dir}")
+
+              # Delete ETS table (only if it still exists)
+              if :ets.whereis(ets_table) != :undefined do
+                :ets.delete(ets_table)
+                Logger.info("Deleted ETS table: #{ets_table}")
+              end
+
+            _ ->
+              :ok
+          end
       end
     rescue
       error ->
-        Logger.warning("Failed to cleanup (this is normal if table was already deleted): #{inspect(error)}")
+        Logger.debug("Failed to cleanup (this is normal if table was already deleted): #{inspect(error)}")
     end
   end
 
@@ -136,7 +149,7 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
   Parse row data combining XLSX numeric data and XML inline strings.
   Public helper for direct row processing.
   """
-  def parse_row(row, _row_index, inline_str_data) when is_list(row) and length(row) > 15 do
+  def parse_row(row, row_index, inline_str_data) when is_list(row) and length(row) > 15 do
     # Extract data from inline strings
     reference_date = inline_str_data |> Map.get("A") |> parse_brazilian_date()
     code = inline_str_data |> Map.get("B") |> to_string_safe()
@@ -149,6 +162,11 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
     # Extract numeric data from xlsxir
     coupon_rate = row |> Enum.at(8) |> to_decimal()
     duration = row |> Enum.at(15) |> to_decimal()
+
+    # Log when required fields are missing for debugging
+    if is_nil(duration) or correction_rate_str == "" do
+      Logger.warning("Row ##{row_index}: Missing required fields - duration: #{inspect(duration)}, correction_rate: #{inspect(correction_rate_str)}")
+    end
 
     # Parse ntnb_reference as date
     ntnb_reference_date = parse_brazilian_date(ntnb_reference_str)
