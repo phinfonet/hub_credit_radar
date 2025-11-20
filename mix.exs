@@ -75,7 +75,8 @@ defmodule CreditRadar.MixProject do
       {:sweet_xml, "~> 0.7"},
       {:aws_rds_castore, "~> 1.2"},
       {:bcrypt_elixir, "~> 3.0"},
-      {:oban, "~> 2.18"}
+      {:oban, "~> 2.18"},
+      {:oban_web, "~> 2.10"}
     ]
   end
 
