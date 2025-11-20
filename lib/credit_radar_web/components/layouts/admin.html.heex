@@ -1,17 +1,21 @@
 <Backpex.HTML.Layout.app_shell fluid={@fluid?}>
   <:topbar class="!bg-[#0F172A] !border-[#14203A]">
-    <.link
-      navigate={~p"/admin/securities"}
-      class="inline-flex items-center gap-4 text-white transition hover:opacity-90"
-    >
-      <div class="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#6E82FA] via-[#4BA5FF] to-[#0ADC7D] text-white shadow-inner shadow-black/20">
-        <Backpex.HTML.CoreComponents.icon name="hero-bolt" class="size-6" />
-      </div>
-      <div class="leading-tight">
-        <p class="font-semibold tracking-wide">Credit Radar</p>
-        <p class="text-xs uppercase tracking-[0.3em] text-white/60">Admin Console</p>
-      </div>
-    </.link>
+    <Backpex.HTML.Layout.topbar_branding hide_title>
+      <:logo>
+        <.link
+          navigate={~p"/admin/securities"}
+          class="inline-flex items-center gap-4 text-white transition hover:opacity-90"
+        >
+          <div class="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#6E82FA] via-[#4BA5FF] to-[#0ADC7D] text-white shadow-inner shadow-black/20">
+            <Backpex.HTML.CoreComponents.icon name="hero-bolt" class="size-6" />
+          </div>
+          <div class="leading-tight">
+            <p class="font-semibold tracking-wide">Credit Radar</p>
+            <p class="text-xs uppercase tracking-[0.3em] text-white/60">Admin Console</p>
+          </div>
+        </.link>
+      </:logo>
+    </Backpex.HTML.Layout.topbar_branding>
 
     <div class="flex items-center gap-3">
       <div class="hidden rounded-full border border-[#0ADC7D]/30 bg-[#0ADC7D]/10 px-3 py-1 text-xs font-medium text-[#82ffbe] shadow-sm shadow-[#0ADC7D]/30 sm:flex">
