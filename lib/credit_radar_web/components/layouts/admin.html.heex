@@ -40,254 +40,30 @@
   </:topbar>
   <:sidebar>
     <% current_url = @current_url || "" %>
-    <% securities_active = Backpex.Router.active?(current_url, "/admin/securities") %>
-    <% assessments_active = Backpex.Router.active?(current_url, "/admin/assessments") %>
-    <% cdi_history_active = Backpex.Router.active?(current_url, "/admin/cdi_history") %>
-    <% selic_history_active = Backpex.Router.active?(current_url, "/admin/selic_history") %>
-    <% cdi_projections_active = Backpex.Router.active?(current_url, "/admin/cdi_projections") %>
-    <% ipca_projections_active = Backpex.Router.active?(current_url, "/admin/ipca_projections") %>
-    <% igp_m_projections_active = Backpex.Router.active?(current_url, "/admin/igp_m_projections") %>
-    <% filter_rules_active = Backpex.Router.active?(current_url, "/admin/filter_rules") %>
-    <% executions_active = Backpex.Router.active?(current_url, "/admin/executions") %>
+    <% nav_items = HubCreditRadarWeb.Components.AdminNavigation.nav_items() %>
+
     <nav class="flex h-full flex-col justify-between border-r border-[#14203A] bg-[#0F172A] px-4 pb-6 pt-8">
       <div>
         <p class="mb-6 text-xs font-semibold uppercase tracking-[0.35em] text-white/40">
           Fixed Income Desk
         </p>
         <div class="space-y-2">
-          <.link
-            id="sidebar-securities-link"
-            navigate={~p"/admin/securities"}
-            class={[
-              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-              if(securities_active,
-                do: "bg-[#11394A] text-white shadow-lg shadow-[#0ADC7D]/20 ring-1 ring-[#0ADC7D]/60",
-                else: "text-white/60 hover:bg-white/5 hover:text-white"
-              )
-            ]}
-          >
-            <div class={[
-              "flex size-9 items-center justify-center rounded-lg transition",
-              if(securities_active,
-                do: "bg-gradient-to-br from-[#0ADC7D] to-[#6E82FA] text-white",
-                else: "bg-white/10 text-white/50 group-hover:text-white"
-              )
-            ]}>
-              <Backpex.HTML.CoreComponents.icon name="hero-banknotes" class="size-5" />
-            </div>
-            <div>
-              <p class="font-semibold">Riscos de Crédito</p>
-              <p class="text-xs text-white/50">Atualizado diariamente às 20h</p>
-            </div>
-          </.link>
-
-          <.link
-            id="sidebar-cdi-history-link"
-            navigate={~p"/admin/cdi_history"}
-            class={[
-              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-              if(cdi_history_active,
-                do: "bg-[#162E4E] text-white shadow-lg shadow-[#0ADC7D]/20 ring-1 ring-[#0ADC7D]/60",
-                else: "text-white/60 hover:bg-white/5 hover:text-white"
-              )
-            ]}
-          >
-            <div class={[
-              "flex size-9 items-center justify-center rounded-lg transition",
-              if(cdi_history_active,
-                do: "bg-gradient-to-br from-[#0ADC7D] via-[#3CD2AE] to-[#6E82FA] text-[#041C18]",
-                else: "bg-white/10 text-white/50 group-hover:text-white"
-              )
-            ]}>
-              <Backpex.HTML.CoreComponents.icon name="hero-chart-bar-square" class="size-5" />
-            </div>
-            <div>
-              <p class="font-semibold">Histórico CDI</p>
-              <p class="text-xs text-white/50">Série SGS 4391 sincronizada mensalmente</p>
-            </div>
-          </.link>
-
-          <.link
-            id="sidebar-selic-history-link"
-            navigate={~p"/admin/selic_history"}
-            class={[
-              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-              if(selic_history_active,
-                do: "bg-[#1A2F56] text-white shadow-lg shadow-[#4BA5FF]/25 ring-1 ring-[#4BA5FF]/60",
-                else: "text-white/60 hover:bg-white/5 hover:text-white"
-              )
-            ]}
-          >
-            <div class={[
-              "flex size-9 items-center justify-center rounded-lg transition",
-              if(selic_history_active,
-                do: "bg-gradient-to-br from-[#4BA5FF] via-[#6E82FA] to-[#0ADC7D] text-white",
-                else: "bg-white/10 text-white/50 group-hover:text-white"
-              )
-            ]}>
-              <Backpex.HTML.CoreComponents.icon name="hero-sparkles" class="size-5" />
-            </div>
-            <div>
-              <p class="font-semibold">Histórico SELIC</p>
-              <p class="text-xs text-white/50">Acompanhamento SGS 4390</p>
-            </div>
-          </.link>
-
-          <.link
-            id="sidebar-cdi-projections-link"
-            navigate={~p"/admin/cdi_projections"}
-            class={[
-              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-              if(cdi_projections_active,
-                do: "bg-[#261B4F] text-white shadow-lg shadow-[#C084FC]/25 ring-1 ring-[#C084FC]/60",
-                else: "text-white/60 hover:bg-white/5 hover:text-white"
-              )
-            ]}
-          >
-            <div class={[
-              "flex size-9 items-center justify-center rounded-lg transition",
-              if(cdi_projections_active,
-                do: "bg-gradient-to-br from-[#C084FC] via-[#8B5CF6] to-[#0ADC7D] text-white",
-                else: "bg-white/10 text-white/50 group-hover:text-white"
-              )
-            ]}>
-              <Backpex.HTML.CoreComponents.icon name="hero-chart-bar" class="size-5" />
-            </div>
-            <div>
-              <p class="font-semibold">Projeções CDI</p>
-              <p class="text-xs text-white/50">Pearson + statistics mensal</p>
-            </div>
-          </.link>
-
-          <.link
-            id="sidebar-ipca-projections-link"
-            navigate={~p"/admin/ipca_projections"}
-            class={[
-              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-              if(ipca_projections_active,
-                do: "bg-[#30213D] text-white shadow-lg shadow-[#F472B6]/25 ring-1 ring-[#F472B6]/60",
-                else: "text-white/60 hover:bg-white/5 hover:text-white"
-              )
-            ]}
-          >
-            <div class={[
-              "flex size-9 items-center justify-center rounded-lg transition",
-              if(ipca_projections_active,
-                do: "bg-gradient-to-br from-[#F472B6] via-[#DB2777] to-[#0ADC7D] text-white",
-                else: "bg-white/10 text-white/50 group-hover:text-white"
-              )
-            ]}>
-              <Backpex.HTML.CoreComponents.icon name="hero-arrow-trending-up" class="size-5" />
-            </div>
-            <div>
-              <p class="font-semibold">Projeções IPCA</p>
-              <p class="text-xs text-white/50">Tracking de inflação esperada</p>
-            </div>
-          </.link>
-
-          <.link
-            id="sidebar-igp-m-projections-link"
-            navigate={~p"/admin/igp_m_projections"}
-            class={[
-              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-              if(igp_m_projections_active,
-                do: "bg-[#3D2817] text-white shadow-lg shadow-[#FB923C]/25 ring-1 ring-[#FB923C]/60",
-                else: "text-white/60 hover:bg-white/5 hover:text-white"
-              )
-            ]}
-          >
-            <div class={[
-              "flex size-9 items-center justify-center rounded-lg transition",
-              if(igp_m_projections_active,
-                do: "bg-gradient-to-br from-[#FB923C] via-[#F97316] to-[#0ADC7D] text-white",
-                else: "bg-white/10 text-white/50 group-hover:text-white"
-              )
-            ]}>
-              <Backpex.HTML.CoreComponents.icon name="hero-presentation-chart-line" class="size-5" />
-            </div>
-            <div>
-              <p class="font-semibold">Projeções IGP-M</p>
-              <p class="text-xs text-white/50">Índice de preços FGV</p>
-            </div>
-          </.link>
-
-          <.link
-            id="sidebar-assessments-link"
-            navigate={~p"/admin/assessments"}
-            class={[
-              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-              if(assessments_active,
-                do: "bg-[#1A2F56] text-white shadow-lg shadow-[#6E82FA]/25 ring-1 ring-[#6E82FA]/60",
-                else: "text-white/60 hover:bg-white/5 hover:text-white"
-              )
-            ]}
-          >
-            <div class={[
-              "flex size-9 items-center justify-center rounded-lg transition",
-              if(assessments_active,
-                do: "bg-gradient-to-br from-[#6E82FA] via-[#5A7BFF] to-[#0ADC7D] text-white",
-                else: "bg-white/10 text-white/50 group-hover:text-white"
-              )
-            ]}>
-              <Backpex.HTML.CoreComponents.icon name="hero-clipboard-document-check" class="size-5" />
-            </div>
-            <div>
-              <p class="font-semibold">Recomendações</p>
-              <p class="text-xs text-white/50">Cadastre as recomendações do Hub pra cada risco de crédito</p>
-            </div>
-          </.link>
-
-          <.link
-            id="sidebar-filter-rules-link"
-            navigate={~p"/admin/filter_rules"}
-            class={[
-              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-              if(filter_rules_active,
-                do: "bg-[#164433] text-white shadow-lg shadow-[#0ADC7D]/25 ring-1 ring-[#0ADC7D]/60",
-                else: "text-white/60 hover:bg-white/5 hover:text-white"
-              )
-            ]}
-          >
-            <div class={[
-              "flex size-9 items-center justify-center rounded-lg transition",
-              if(filter_rules_active,
-                do: "bg-gradient-to-br from-[#0ADC7D] via-[#44F3AA] to-[#6E82FA] text-[#05110A]",
-                else: "bg-white/10 text-white/50 group-hover:text-white"
-              )
-            ]}>
-              <Backpex.HTML.CoreComponents.icon name="hero-adjustments-horizontal" class="size-5" />
-            </div>
-            <div>
-              <p class="font-semibold">Filtrar Ativos</p>
-              <p class="text-xs text-white/50">Mantenha ativos não cobertos fora das ingestões</p>
-            </div>
-          </.link>
-
-          <.link
-            id="sidebar-executions-link"
-            navigate={~p"/admin/executions"}
-            class={[
-              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-              if(executions_active,
-                do: "bg-[#12324B] text-white shadow-lg shadow-[#29B6F6]/25 ring-1 ring-[#29B6F6]/60",
-                else: "text-white/60 hover:bg-white/5 hover:text-white"
-              )
-            ]}
-          >
-            <div class={[
-              "flex size-9 items-center justify-center rounded-lg transition",
-              if(executions_active,
-                do: "bg-gradient-to-br from-[#29B6F6] via-[#4CC2FF] to-[#6E82FA] text-white",
-                else: "bg-white/10 text-white/50 group-hover:text-white"
-              )
-            ]}>
-              <Backpex.HTML.CoreComponents.icon name="hero-arrow-path" class="size-5" />
-            </div>
-            <div>
-              <p class="font-semibold">Executions</p>
-              <p class="text-xs text-white/50">Monitore o histórico de ingestões</p>
-            </div>
-          </.link>
+          <%= for item <- nav_items do %>
+            <% is_active = Backpex.Router.active?(current_url, item.path) %>
+            <.link
+              id={item.id}
+              navigate={item.path}
+              class={HubCreditRadarWeb.Components.AdminNavigation.link_classes(is_active, item)}
+            >
+              <div class={HubCreditRadarWeb.Components.AdminNavigation.icon_classes(is_active, item)}>
+                <Backpex.HTML.CoreComponents.icon name={item.icon} class="size-5" />
+              </div>
+              <div>
+                <p class="font-semibold"><%= item.title %></p>
+                <p class="text-xs text-white/50"><%= item.description %></p>
+              </div>
+            </.link>
+          <% end %>
         </div>
       </div>
 
