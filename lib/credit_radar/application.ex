@@ -13,7 +13,7 @@ defmodule CreditRadar.Application do
       CreditRadar.HubRepo,
       CreditRadar.Cache,
       {CreditRadar.Ingestions.TaskSupervisor, name: CreditRadar.Ingestions.TaskSupervisor},
-      {Oban, repo: CreditRadar.Repo, queues: [debentures: 1, debenture_rows: 10]},
+      {Oban, repo: CreditRadar.Repo, queues: [debentures: 1, debenture_rows: 5]},
       {DNSCluster, query: Application.get_env(:credit_radar, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: CreditRadar.PubSub},
       # Start a worker by calling: CreditRadar.Worker.start_link(arg)
