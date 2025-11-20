@@ -1,47 +1,41 @@
 <Backpex.HTML.Layout.app_shell fluid={@fluid?}>
   <:topbar>
-    <div class="relative w-full">
-      <div class="pointer-events-none absolute inset-0 border-b border-[#14203A] bg-[#0F172A] shadow-lg shadow-[#0ADC7D]/10"></div>
-
-      <div class="relative flex w-full items-center justify-between gap-6 px-6 py-4">
-        <.link
-          navigate={~p"/admin/securities"}
-          class="inline-flex items-center gap-4 text-white transition hover:opacity-90"
-        >
-          <div class="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#6E82FA] via-[#4BA5FF] to-[#0ADC7D] text-white shadow-inner shadow-black/20">
-            <Backpex.HTML.CoreComponents.icon name="hero-bolt" class="size-6" />
-          </div>
-          <div class="leading-tight">
-            <p class="font-semibold tracking-wide">Credit Radar</p>
-            <p class="text-xs uppercase tracking-[0.3em] text-white/60">Admin Console</p>
-          </div>
-        </.link>
-
-        <div class="flex items-center gap-3">
-          <div class="hidden rounded-full border border-[#0ADC7D]/30 bg-[#0ADC7D]/10 px-3 py-1 text-xs font-medium text-[#82ffbe] shadow-sm shadow-[#0ADC7D]/30 sm:flex">
-            Operações em tempo real
-          </div>
-          <Backpex.HTML.Layout.topbar_dropdown class="mr-0">
-            <:label>
-              <button class="flex size-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition hover:border-[#6E82FA]/60 hover:bg-[#6E82FA]/15 focus:outline-none focus:ring-2 focus:ring-[#6E82FA]/40">
-                <Backpex.HTML.CoreComponents.icon name="hero-user" class="size-6" />
-              </button>
-            </:label>
-            <li>
-              <.link href="/" class="flex justify-between px-3 py-2 text-error hover:bg-white/5">
-                <p>Logout</p>
-                <Backpex.HTML.CoreComponents.icon name="hero-arrow-right-on-rectangle" class="size-5" />
-              </.link>
-            </li>
-          </Backpex.HTML.Layout.topbar_dropdown>
-        </div>
+    <.link
+      navigate={~p"/admin/securities"}
+      class="inline-flex items-center gap-4 text-white transition hover:opacity-90"
+    >
+      <div class="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#6E82FA] via-[#4BA5FF] to-[#0ADC7D] text-white shadow-inner shadow-black/20">
+        <Backpex.HTML.CoreComponents.icon name="hero-bolt" class="size-6" />
       </div>
+      <div class="leading-tight">
+        <p class="font-semibold tracking-wide">Credit Radar</p>
+        <p class="text-xs uppercase tracking-[0.3em] text-white/60">Admin Console</p>
+      </div>
+    </.link>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden rounded-full border border-[#0ADC7D]/30 bg-[#0ADC7D]/10 px-3 py-1 text-xs font-medium text-[#82ffbe] shadow-sm shadow-[#0ADC7D]/30 sm:flex">
+        Operações em tempo real
+      </div>
+      <Backpex.HTML.Layout.topbar_dropdown class="mr-0">
+        <:label>
+          <button class="flex size-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition hover:border-[#6E82FA]/60 hover:bg-[#6E82FA]/15 focus:outline-none focus:ring-2 focus:ring-[#6E82FA]/40">
+            <Backpex.HTML.CoreComponents.icon name="hero-user" class="size-6" />
+          </button>
+        </:label>
+        <li>
+          <.link href="/" class="flex justify-between px-3 py-2 text-error hover:bg-white/5">
+            <p>Logout</p>
+            <Backpex.HTML.CoreComponents.icon name="hero-arrow-right-on-rectangle" class="size-5" />
+          </.link>
+        </li>
+      </Backpex.HTML.Layout.topbar_dropdown>
     </div>
   </:topbar>
   <:sidebar>
     <% nav_items = HubCreditRadarWeb.Components.AdminNavigation.nav_items() %>
 
-    <div class="flex h-full flex-col justify-between px-4 pb-6 pt-8">
+    <div class="flex h-full flex-col justify-between border-r border-[#14203A] bg-[#0F172A] px-4 pb-6 pt-8">
       <div>
         <p class="mb-6 text-xs font-semibold uppercase tracking-[0.35em] text-white/40">
           Fixed Income Desk
