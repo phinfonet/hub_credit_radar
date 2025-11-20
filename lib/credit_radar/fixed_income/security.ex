@@ -44,7 +44,7 @@ defmodule CreditRadar.FixedIncome.Security do
       :sync_source
     ])
     |> normalize_string_fields()
-    |> validate_required([:issuer, :security_type, :series, :issuing, :code, :duration])
+    |> validate_required([:issuer, :security_type, :series, :issuing, :code])
   end
 
   defp normalize_string_fields(changeset) do

@@ -24,7 +24,7 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
           "execution_id" => execution_id
         }
       }) do
-    Logger.debug("Processing debenture row ##{row_index} for execution ##{execution_id}")
+    Logger.info("Processing debenture row ##{row_index} for execution ##{execution_id}")
 
     # Get file paths from ETS table
     ets_table = String.to_atom(ets_table_str)
@@ -43,19 +43,29 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
 
     case result do
       {:ok, :created} ->
-        Logger.debug("Created debenture from row ##{row_index}")
+        Logger.info("✓ Created debenture from row ##{row_index}")
         :ok
 
       {:ok, :updated} ->
-        Logger.debug("Updated debenture from row ##{row_index}")
+        Logger.info("✓ Updated debenture from row ##{row_index}")
         :ok
 
       {:skip, reason} ->
-        Logger.debug("Skipped row ##{row_index}: #{inspect(reason)}")
+        Logger.warning("⊘ Skipped row ##{row_index}: #{inspect(reason)}")
         :ok
 
+      {:error, %Ecto.Changeset{} = changeset} ->
+        errors = Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+          Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+            opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+          end)
+        end)
+        Logger.error("✗ Failed to persist row ##{row_index} - Validation errors: #{inspect(errors)}")
+        Logger.error("  Changeset: #{inspect(changeset)}")
+        {:error, errors}
+
       {:error, reason} ->
-        Logger.error("Failed to persist row ##{row_index}: #{inspect(reason)}")
+        Logger.error("✗ Failed to persist row ##{row_index}: #{inspect(reason)}")
         {:error, reason}
     end
   end
