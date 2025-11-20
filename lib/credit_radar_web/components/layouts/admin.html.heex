@@ -36,53 +36,51 @@
       </Backpex.HTML.Layout.topbar_dropdown>
     </div>
   </:topbar>
-  <:sidebar>
+  <:sidebar class="!bg-[#0F172A] !border-r !border-[#14203A] flex h-full flex-col justify-between !px-4 !pb-6 !pt-8">
     <% nav_items = HubCreditRadarWeb.Components.AdminNavigation.nav_items() %>
 
-    <div class="flex h-full flex-col justify-between border-r border-[#14203A] bg-[#0F172A] px-4 pb-6 pt-8">
-      <div>
-        <p class="mb-6 text-xs font-semibold uppercase tracking-[0.35em] text-white/40">
-          Fixed Income Desk
-        </p>
-        <nav class="space-y-2">
-          <%= for item <- nav_items do %>
-            <% is_active = Backpex.Router.active?(@current_url, item.path) %>
-            <.link
-              navigate={item.path}
-              class={[
-                "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
-                if(is_active,
-                  do: "#{item.active_bg} text-white shadow-lg #{item.active_shadow} ring-1 #{item.active_ring}",
-                  else: "text-white/60 hover:bg-white/5 hover:text-white"
-                )
-              ]}
-            >
-              <div class={[
-                "flex size-9 items-center justify-center rounded-lg transition",
-                if(is_active,
-                  do: HubCreditRadarWeb.Components.AdminNavigation.icon_gradient_classes(item),
-                  else: "bg-white/10 text-white/50 group-hover:text-white"
-                )
-              ]}>
-                <Backpex.HTML.CoreComponents.icon name={item.icon} class="size-5" />
-              </div>
-              <div class="flex-1">
-                <p class="font-semibold"><%= item.title %></p>
-                <p class="text-xs text-white/50"><%= item.description %></p>
-              </div>
-            </.link>
-          <% end %>
-        </nav>
+    <div>
+      <p class="mb-6 text-xs font-semibold uppercase tracking-[0.35em] text-white/40">
+        Fixed Income Desk
+      </p>
+      <div class="space-y-2">
+        <%= for item <- nav_items do %>
+          <% is_active = Backpex.Router.active?(@current_url, item.path) %>
+          <.link
+            navigate={item.path}
+            class={[
+              "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition",
+              if(is_active,
+                do: "#{item.active_bg} text-white shadow-lg #{item.active_shadow} ring-1 #{item.active_ring}",
+                else: "text-white/60 hover:bg-white/5 hover:text-white"
+              )
+            ]}
+          >
+            <div class={[
+              "flex size-9 items-center justify-center rounded-lg transition",
+              if(is_active,
+                do: HubCreditRadarWeb.Components.AdminNavigation.icon_gradient_classes(item),
+                else: "bg-white/10 text-white/50 group-hover:text-white"
+              )
+            ]}>
+              <Backpex.HTML.CoreComponents.icon name={item.icon} class="size-5" />
+            </div>
+            <div class="flex-1">
+              <p class="font-semibold"><%= item.title %></p>
+              <p class="text-xs text-white/50"><%= item.description %></p>
+            </div>
+          </.link>
+        <% end %>
       </div>
-
-      <footer class="rounded-xl bg-white/5 p-4 text-xs leading-relaxed text-white/70 shadow-inner shadow-black/20">
-        <p class="font-semibold uppercase tracking-[0.3em] text-white/50">Agenda</p>
-        <p class="mt-1">
-          Sincronizamos os dados de mercado automaticamente após as 20h. Os dados podem ser
-          atualizados a qualquer momento pelos assessores.
-        </p>
-      </footer>
     </div>
+
+    <footer class="rounded-xl bg-white/5 p-4 text-xs leading-relaxed text-white/70 shadow-inner shadow-black/20">
+      <p class="font-semibold uppercase tracking-[0.3em] text-white/50">Agenda</p>
+      <p class="mt-1">
+        Sincronizamos os dados de mercado automaticamente após as 20h. Os dados podem ser
+        atualizados a qualquer momento pelos assessores.
+      </p>
+    </footer>
   </:sidebar>
   <Backpex.HTML.Layout.flash_messages flash={@flash} />
   {render_slot(@inner_block)}
