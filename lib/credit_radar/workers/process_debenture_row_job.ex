@@ -163,9 +163,10 @@ defmodule CreditRadar.Workers.ProcessDebentureRowJob do
     coupon_rate = row |> Enum.at(8) |> to_decimal()
     duration = row |> Enum.at(15) |> to_decimal()
 
-    # Log when required fields are missing for debugging
-    if is_nil(duration) or correction_rate_str == "" do
-      Logger.warning("Row ##{row_index}: Missing required fields - duration: #{inspect(duration)}, correction_rate: #{inspect(correction_rate_str)}")
+    # Debug logging for row data
+    if is_nil(duration) do
+      Logger.warning("Row ##{row_index}: duration is nil - row length: #{length(row)}, value at index 15: #{inspect(Enum.at(row, 15))}")
+      Logger.debug("Row ##{row_index} full data: #{inspect(row)}")
     end
 
     # Parse ntnb_reference as date
