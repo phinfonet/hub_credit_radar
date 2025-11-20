@@ -125,7 +125,7 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
           stream
           |> Stream.drop(1)  # Skip header (row 1)
           |> Stream.with_index(2)  # Start from row 2
-          |> Stream.chunk_every(100)  # Process in batches of 100
+          |> Stream.chunk_every(10)  # Process in VERY small batches of 10
           |> Stream.each(fn chunk ->
             # Create jobs for this batch
             jobs =
@@ -141,13 +141,15 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
             # Insert batch
             Oban.insert_all(jobs)
 
-            # GC and sleep between batches
+            # Aggressive GC and longer sleep between batches
             :erlang.garbage_collect()
-            Process.sleep(50)
+            Process.sleep(100)
 
-            Logger.info("Enqueued batch of #{length(jobs)} jobs")
+            if rem(length(jobs), 50) == 0 do
+              Logger.info("Enqueued batch of #{length(jobs)} jobs")
+            end
           end)
-          |> Enum.reduce(0, fn _, acc -> acc + 100 end)
+          |> Enum.reduce(0, fn _, acc -> acc + 10 end)
 
         Xlsxir.close(pid)
 
