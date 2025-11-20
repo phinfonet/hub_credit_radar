@@ -2,24 +2,23 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   @moduledoc """
   Oban worker for processing debenture XLS file uploads.
 
-  This job reads the XLSX file and processes it synchronously using streams
-  and batching to avoid OOM issues. No ETS required.
+  This job reads the XLSX file and enqueues ProcessDebentureRowJob for each row.
+  Each row job receives all data it needs (no ETS dependency).
+  Multiple workers can process rows in parallel safely.
   """
   use Oban.Worker, queue: :debentures, max_attempts: 3
 
   alias CreditRadar.Ingestions
-  alias CreditRadar.FixedIncome
-  alias CreditRadar.FixedIncome.Security
+  alias CreditRadar.Workers.ProcessDebentureRowJob
   alias CreditRadar.Repo
-  alias Ecto.Changeset
   alias Decimal
 
   import SweetXml
 
   require Logger
 
-  # Size of each batch to process
-  @batch_size 250
+  # Size of each batch when enqueuing jobs
+  @batch_size 50
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"execution_id" => execution_id, "file_path" => file_path}}) do
@@ -37,14 +36,14 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
     Logger.info("🟢 Execution ##{execution_id} marked as running")
 
-    # Process file synchronously using streams
+    # Parse file and enqueue row jobs (no ETS needed)
     try do
-      case parse_and_persist_file_in_batches(file_path, execution) do
-        {:ok, stats} ->
-          Logger.info("🟢 IngestDebenturesJob completed successfully")
-          Logger.info("   Created: #{stats.created}, Updated: #{stats.updated}, Skipped: #{stats.skipped}, Errors: #{length(stats.errors)}")
+      case parse_and_enqueue_rows(file_path, execution_id) do
+        {:ok, row_count} ->
+          Logger.info("🟢 IngestDebenturesJob completed: enqueued #{row_count} row jobs")
+          Logger.info("   Jobs will be processed by #{row_count} workers in parallel")
 
-          # Mark execution as completed
+          # Mark execution as completed (row jobs will process in background)
           {:ok, _execution} =
             execution
             |> Ingestions.execution_update_changeset(%{
@@ -79,10 +78,10 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   end
 
   @doc """
-  Parses and persists the XLS/XLSX file in batches to avoid OOM issues.
-  Uses synchronous stream processing with no ETS required.
+  Parses XLSX file and enqueues ProcessDebentureRowJob for each row.
+  All data is passed in job args - no ETS needed.
   """
-  defp parse_and_persist_file_in_batches(file_path, execution) do
+  defp parse_and_enqueue_rows(file_path, execution_id) do
     unless File.exists?(file_path) do
       {:error, :file_not_found}
     else
@@ -95,68 +94,60 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
         Logger.info("Opening XLSX file for batch processing...")
         {:ok, pid} = Xlsxir.multi_extract(file_path, 0)
 
-        # Get total row count for progress tracking
+        # Get all rows
         rows = Xlsxir.get_list(pid)
         total_rows = length(rows) - 1  # Exclude header
-        Logger.info("Total rows to process: #{total_rows}")
+        Logger.info("Total rows to enqueue: #{total_rows}")
 
-        # Process in batches to avoid memory issues
-        stats =
+        # Enqueue jobs in batches
+        row_count =
           rows
           # Skip header row
           |> Enum.drop(1)
           # Start from row 2 (after header)
           |> Stream.with_index(2)
-          # Process in chunks
+          # Process in chunks to batch inserts
           |> Stream.chunk_every(@batch_size)
-          |> Stream.with_index(1)
-          |> Enum.reduce(%{created: 0, updated: 0, skipped: 0, errors: []}, fn {batch, batch_num}, acc ->
-            batch_start = (batch_num - 1) * @batch_size + 1
-            batch_end = min(batch_num * @batch_size, total_rows)
-
-            Logger.info("Processing batch #{batch_num}: rows #{batch_start}-#{batch_end} of #{total_rows}")
-
-            # Parse batch
-            operations =
+          |> Enum.reduce(0, fn batch, acc ->
+            # Parse rows and create jobs
+            jobs =
               batch
               |> Enum.map(fn {row, row_index} ->
-                parse_row_with_inline_str(row, row_index, inline_str_data)
+                case parse_row_with_inline_str(row, row_index, inline_str_data) do
+                  nil ->
+                    nil
+
+                  attrs ->
+                    # Serialize attrs to job-compatible format (no ETS needed!)
+                    ProcessDebentureRowJob.new(%{
+                      row_index: row_index,
+                      execution_id: execution_id,
+                      attrs: serialize_attrs(attrs)
+                    })
+                end
               end)
               |> Enum.reject(&is_nil/1)
 
-            # Persist batch
-            batch_stats = persist_batch(operations)
+            # Insert batch of jobs
+            Oban.insert_all(jobs)
 
-            # Update progress
-            progress = min(100, div(batch_end * 100, total_rows))
-            _ = report_intermediate_progress(execution, progress)
-
-            # Merge stats
-            merged = %{
-              created: acc.created + batch_stats.created,
-              updated: acc.updated + batch_stats.updated,
-              skipped: acc.skipped + batch_stats.skipped,
-              errors: acc.errors ++ batch_stats.errors
-            }
-
-            # Force garbage collection after each batch to free memory
+            # Aggressive GC
             :erlang.garbage_collect()
 
-            Logger.info("Batch #{batch_num} complete - created: #{batch_stats.created}, updated: #{batch_stats.updated}, skipped: #{batch_stats.skipped}, errors: #{length(batch_stats.errors)}")
+            new_count = acc + length(jobs)
 
-            merged
+            if rem(new_count, 200) == 0 do
+              Logger.info("Enqueued #{new_count} jobs so far...")
+            end
+
+            new_count
           end)
 
         Xlsxir.close(pid)
 
-        Logger.info(
-          "Debentures ingestion completed - Total: created=#{stats.created}, updated=#{stats.updated}, skipped=#{stats.skipped}, errors=#{length(stats.errors)}"
-        )
+        Logger.info("Enqueued #{row_count} jobs total")
 
-        case stats.errors do
-          [] -> {:ok, stats}
-          errors -> {:error, {:persistence_failed, errors}}
-        end
+        {:ok, row_count}
       rescue
         error ->
           Logger.error("Failed to parse XLSX file: #{inspect(error)}")
@@ -301,136 +292,37 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
 
   defp parse_row_with_inline_str(_row, _row_index, _inline_str_data), do: nil
 
-  defp persist_batch(operations) when is_list(operations) do
-    Enum.reduce(operations, %{created: 0, updated: 0, skipped: 0, errors: []}, fn operation, acc ->
-      case persist_operation(operation) do
-        {:ok, :created} ->
-          %{acc | created: acc.created + 1}
-
-        {:ok, :updated} ->
-          %{acc | updated: acc.updated + 1}
-
-        {:skip, reason} ->
-          Logger.debug(
-            "Skipping debenture security persistence because #{inspect(reason)}: #{inspect(operation)}"
-          )
-          %{acc | skipped: acc.skipped + 1}
-
-        {:error, reason} ->
-          %{acc | errors: acc.errors ++ [{:error, reason, operation}]}
-      end
-    end)
+  @doc """
+  Serializes attrs to a JSON-compatible format.
+  Converts Decimal and Date to strings, converts atom keys to strings.
+  """
+  defp serialize_attrs(attrs) do
+    %{
+      "reference_date" => date_to_string(attrs[:reference_date]),
+      "security_type" => to_string(attrs[:security_type]),
+      "code" => attrs[:code],
+      "issuer" => attrs[:issuer],
+      "credit_risk" => attrs[:credit_risk],
+      "correction_rate_type" => attrs[:correction_rate_type],
+      "correction_rate" => attrs[:correction_rate],
+      "series" => attrs[:series],
+      "issuing" => attrs[:issuing],
+      "maturity_date" => date_to_string(attrs[:maturity_date]),
+      "coupon_rate" => decimal_to_string(attrs[:coupon_rate]),
+      "duration" => decimal_to_integer(attrs[:duration]),
+      "ntnb_reference_date" => date_to_string(attrs[:ntnb_reference_date]),
+      "benchmark_index" => attrs[:benchmark_index],
+      "ntnb_reference" => attrs[:ntnb_reference]
+    }
   end
 
-  defp persist_operation(%{} = operation) do
-    case normalize_security_attrs(operation) do
-      {:ok, attrs} -> upsert_security(attrs)
-      other -> other
-    end
-  end
+  defp date_to_string(nil), do: nil
+  defp date_to_string(%Date{} = date), do: Date.to_iso8601(date)
+  defp date_to_string(_), do: nil
 
-  defp persist_operation(_operation), do: {:skip, :invalid_operation}
-
-  defp normalize_security_attrs(operation) do
-    code = operation |> Map.get(:code) |> normalize_string()
-    security_type = Map.get(operation, :security_type)
-    issuer = operation |> Map.get(:issuer) |> normalize_string()
-    series = operation |> Map.get(:series) |> normalize_string()
-    issuing = operation |> Map.get(:issuing) |> normalize_string()
-    credit_risk = operation |> Map.get(:credit_risk) |> normalize_string()
-    duration = operation |> Map.get(:duration) |> decimal_to_integer()
-    reference_date = Map.get(operation, :reference_date)
-    benchmark_index = operation |> Map.get(:benchmark_index) |> normalize_string()
-    ntnb_reference = operation |> Map.get(:ntnb_reference) |> normalize_string()
-    ntnb_reference_date = Map.get(operation, :ntnb_reference_date)
-    coupon_rate = Map.get(operation, :coupon_rate)
-    correction_rate = Map.get(operation, :correction_rate)
-
-    cond do
-      is_nil(code) ->
-        {:skip, :missing_code}
-
-      is_nil(security_type) ->
-        {:skip, :missing_security_type}
-
-      is_nil(issuer) ->
-        {:skip, :missing_issuer}
-
-      is_nil(duration) ->
-        {:skip, :missing_duration}
-
-      true ->
-        attrs =
-          %{
-            code: code,
-            security_type: security_type,
-            issuer: issuer,
-            series: series || "ÚNICA",
-            issuing: issuing || "N/A",
-            credit_risk: credit_risk,
-            duration: duration,
-            reference_date: reference_date,
-            benchmark_index: benchmark_index,
-            ntnb_reference: ntnb_reference,
-            ntnb_reference_date: ntnb_reference_date,
-            coupon_rate: coupon_rate,
-            correction_rate: correction_rate,
-            sync_source: :xls
-          }
-
-        {:ok, attrs}
-    end
-  end
-
-  defp upsert_security(attrs) do
-    lookup =
-      [:code, :series]
-      |> Enum.reduce(%{}, fn key, acc ->
-        case Map.get(attrs, key) do
-          nil -> acc
-          value -> Map.put(acc, key, value)
-        end
-      end)
-
-    if map_size(lookup) == 0 do
-      {:error, :missing_lookup_keys}
-    else
-      case Repo.get_by(Security, lookup) do
-        nil -> create_security(attrs)
-        %Security{} = security -> update_security(security, attrs)
-      end
-    end
-  end
-
-  defp create_security(attrs) do
-    attrs = Map.put_new(attrs, :sync_source, :xls)
-
-    %Security{}
-    |> FixedIncome.security_create_changeset(attrs)
-    |> Repo.insert()
-    |> case do
-      {:ok, _security} ->
-        {:ok, :created}
-
-      {:error, %Changeset{} = changeset} ->
-        {:error, {:changeset_error, changeset_errors(changeset)}}
-    end
-  end
-
-  defp update_security(%Security{} = security, attrs) do
-    attrs = Map.put_new(attrs, :sync_source, security.sync_source || :xls)
-
-    security
-    |> FixedIncome.security_update_changeset(attrs)
-    |> Repo.update()
-    |> case do
-      {:ok, _security} ->
-        {:ok, :updated}
-
-      {:error, %Changeset{} = changeset} ->
-        {:error, {:changeset_error, changeset_errors(changeset)}}
-    end
-  end
+  defp decimal_to_string(nil), do: nil
+  defp decimal_to_string(%Decimal{} = decimal), do: Decimal.to_string(decimal)
+  defp decimal_to_string(_), do: nil
 
   # Helper functions for parsing and normalization
   defp to_string_safe(nil), do: nil
@@ -554,36 +446,6 @@ defmodule CreditRadar.Workers.IngestDebenturesJob do
   end
 
   defp decimal_to_integer(_), do: nil
-
-  defp changeset_errors(%Changeset{} = changeset) do
-    Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        string_value = safe_to_string(value)
-        String.replace(acc, "%{#{key}}", string_value)
-      end)
-    end)
-  end
-
-  defp safe_to_string(value) when is_binary(value), do: value
-  defp safe_to_string(value) when is_atom(value), do: to_string(value)
-  defp safe_to_string(value) when is_integer(value), do: Integer.to_string(value)
-  defp safe_to_string(value) when is_float(value), do: Float.to_string(value)
-  defp safe_to_string(value) when is_tuple(value), do: inspect(value)
-  defp safe_to_string(value), do: inspect(value)
-
-  defp report_intermediate_progress(%{id: id}, progress) when is_integer(id) do
-    Ingestions.report_progress(id, progress)
-  rescue
-    _ -> :ok
-  end
-
-  defp report_intermediate_progress(%Ingestions.Execution{} = execution, progress) do
-    Ingestions.report_progress(execution, progress)
-  rescue
-    _ -> :ok
-  end
-
-  defp report_intermediate_progress(_execution, _progress), do: :ok
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(30)
