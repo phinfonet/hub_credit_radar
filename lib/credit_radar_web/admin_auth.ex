@@ -32,14 +32,20 @@ defmodule CreditRadarWeb.AdminAuth do
   Se não houver admin na sessão, redireciona para a página de login.
   """
   def require_authenticated_admin(conn, _opts) do
-    case conn.assigns[:current_admin] do
+    current_admin = conn.assigns[:current_admin]
+    Logger.debug("[AdminAuth] require_authenticated_admin - current_admin present: #{inspect(current_admin != nil)}")
+
+    case current_admin do
       nil ->
+        Logger.warn("[AdminAuth] require_authenticated_admin - No admin found, redirecting to login")
+
         conn
         |> put_flash(:error, "Você precisa estar autenticado para acessar esta página.")
         |> redirect(to: ~p"/admin/login")
         |> halt()
 
-      _admin ->
+      admin ->
+        Logger.debug("[AdminAuth] require_authenticated_admin - Admin authenticated: #{admin.email}")
         conn
     end
   end
@@ -71,9 +77,20 @@ defmodule CreditRadarWeb.AdminAuth do
   Retorna a conexão com a sessão limpa.
   """
   def log_out_admin(conn) do
+    admin_id_before = get_session(conn, :admin_id)
+    Logger.info("[AdminAuth] log_out_admin - Logging out admin_id: #{inspect(admin_id_before)}")
+
+    conn =
+      conn
+      |> delete_session(:admin_id)
+      |> assign(:current_admin, nil)
+      |> configure_session(renew: true)
+
+    # Verify session was cleared
+    admin_id_after = get_session(conn, :admin_id)
+    Logger.info("[AdminAuth] log_out_admin - After logout, admin_id in session: #{inspect(admin_id_after)}")
+
     conn
-    |> delete_session(:admin_id)
-    |> assign(:current_admin, nil)
   end
 
   @doc """
