@@ -2,6 +2,37 @@
 
 Este guia explica como fazer deploy da aplicação em produção.
 
+## ⚡ Estratégia de Zero-Downtime
+
+O script de deploy foi otimizado para **minimizar o downtime** durante atualizações:
+
+### Como Funciona
+
+**Fase 1: Build (servidor antigo rodando)**
+- Instalação de dependências
+- Compilação do código
+- Build dos assets
+- Criação da release
+
+**Fase 2: Swap Rápido (downtime mínimo)**
+- Stop do servidor antigo
+- Execução de migrações
+- Start do novo servidor
+
+### Downtime Esperado
+
+- **Antes:** 2-5 minutos (todo o processo de build)
+- **Agora:** 5-15 segundos (apenas stop + migrations + start)
+
+O script exibe automaticamente o tempo total de downtime ao final do deploy.
+
+### Preparação para Rolling Deployment
+
+Este setup já está preparado para quando você tiver múltiplas instâncias:
+- Cada instância pode ser atualizada individualmente
+- O build acontece sem afetar o serviço
+- Apenas o swap final causa downtime breve por instância
+
 ## Opções de Deploy
 
 ### 1. Deploy com Systemd (Recomendado para Produção)
