@@ -28,7 +28,11 @@
           </button>
         </:label>
         <li>
-          <.link href="/" class="flex justify-between px-3 py-2 text-error hover:bg-white/5">
+          <.link
+            href={~p"/admin/logout"}
+            method="delete"
+            class="flex justify-between px-3 py-2 text-error hover:bg-white/5"
+          >
             <p>Logout</p>
             <Backpex.HTML.CoreComponents.icon name="hero-arrow-right-on-rectangle" class="size-5" />
           </.link>
