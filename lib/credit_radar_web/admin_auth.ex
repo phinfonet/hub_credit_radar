@@ -8,6 +8,7 @@ defmodule CreditRadarWeb.AdminAuth do
   import Phoenix.Controller
 
   alias CreditRadar.Accounts
+  alias Phoenix.LiveView
 
   @doc """
   Plug que busca o admin atual da sessão e o coloca em `conn.assigns.current_admin`.
@@ -57,7 +58,29 @@ defmodule CreditRadarWeb.AdminAuth do
   """
   def log_out_admin(conn) do
     conn
-    |> configure_session(drop: true)
-    |> clear_session()
+    |> delete_session(:admin_id)
+    |> assign(:current_admin, nil)
+  end
+
+  @doc """
+  LiveView hook que garante que o admin está autenticado.
+
+  Uso: on_mount: {CreditRadarWeb.AdminAuth, :ensure_authenticated}
+  """
+  def on_mount(:ensure_authenticated, _params, session, socket) do
+    admin_id = Map.get(session, :admin_id)
+
+    case admin_id && Accounts.get_admin(admin_id) do
+      nil ->
+        socket =
+          socket
+          |> Phoenix.Component.assign(:current_admin, nil)
+          |> LiveView.put_flash(:error, "Você precisa estar autenticado para acessar esta página.")
+
+        {:halt, LiveView.redirect(socket, to: ~p"/admin/login")}
+
+      admin ->
+        {:cont, Phoenix.Component.assign(socket, :current_admin, admin)}
+    end
   end
 end

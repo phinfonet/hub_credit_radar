@@ -58,7 +58,11 @@ defmodule CreditRadarWeb.Router do
 
     oban_dashboard "/oban"
 
-    live_session :admin, on_mount: Backpex.InitAssigns do
+    live_session :admin,
+      on_mount: [
+        {CreditRadarWeb.AdminAuth, :ensure_authenticated},
+        Backpex.InitAssigns
+      ] do
       live_resources "/securities", Live.Admin.FixedIncomeSecurityLive,
         only: [:index, :show, :delete]
       live_resources "/assessments", Live.Admin.FixedIncomeAssessmentLive
