@@ -57,7 +57,7 @@ defmodule CreditRadarWeb.AdminAuth do
   """
   def log_out_admin(conn) do
     conn
+    |> configure_session(drop: true)
     |> clear_session()
-    |> configure_session(renew: true)
   end
 end

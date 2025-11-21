@@ -1,46 +1,31 @@
 defmodule CreditRadar.Auth do
   @moduledoc """
-  Handles authentication against the external GraphQL API.
+  Handles authentication against the external OAuth API.
+
+  Authentication is performed via OAuth password grant flow. The token
+  is sufficient for authentication - no additional GraphQL queries are needed.
   """
 
   require Logger
-  alias CreditRadar.GraphQL.Client
 
   @token_path "/oauth/token"
-  @me_query """
-  query Me {
-    me {
-      id
-      name
-      email
-      confirmed
-      activeSubscription {
-        id
-        actived
-      }
-    }
-  }
-  """
 
   @doc """
-  Performs the password grant against the OAuth endpoint and retrieves the user profile.
+  Performs the password grant against the OAuth endpoint.
   Returns `{:ok, %{token: token, user: map}}` or `{:error, reason}`.
+
+  Note: Token is sufficient for authentication. User profile is created from email.
   """
   def authenticate(email, password) when is_binary(email) and is_binary(password) do
-    with {:ok, token} <- fetch_token(email, password),
-         {:ok, %{"me" => user}} <- fetch_me(token),
-         :ok <- ensure_active_user(user) do
-      {:ok, %{token: token, user: user}}
-    else
-      {:error, _} = error -> error
-      {:inactive, reason} -> {:error, reason}
-    end
-  end
+    case fetch_token(email, password) do
+      {:ok, token} ->
+        # Token is sufficient - create minimal user profile from email
+        user = %{"id" => email, "email" => email, "name" => email}
+        {:ok, %{token: token, user: user}}
 
-  defp fetch_me(token) do
-    result = Client.query(@me_query, %{}, token: token)
-    log_graphql_response(:me, result)
-    result
+      {:error, _} = error ->
+        error
+    end
   end
 
   defp fetch_token(email, password) do
@@ -87,15 +72,6 @@ defmodule CreditRadar.Auth do
     end
   end
 
-  defp ensure_active_user(%{"confirmed" => true} = user) do
-    case get_in(user, ["activeSubscription", "actived"]) do
-      true -> :ok
-      _ -> {:inactive, "Assinatura inativa"}
-    end
-  end
-
-  defp ensure_active_user(_), do: {:inactive, "Usuário não confirmado"}
-
   defp log_http_response(step, {:ok, %Req.Response{} = resp}) do
     Logger.info("""
     [Auth] #{step} response
@@ -106,16 +82,5 @@ defmodule CreditRadar.Auth do
 
   defp log_http_response(step, {:error, reason}) do
     Logger.error("[Auth] #{step} request failed: #{inspect(reason)}")
-  end
-
-  defp log_graphql_response(step, {:ok, body}) do
-    Logger.info("""
-    [Auth] #{step} GraphQL response
-    body=#{inspect(body)}
-    """)
-  end
-
-  defp log_graphql_response(step, {:error, reason}) do
-    Logger.error("[Auth] #{step} GraphQL error: #{inspect(reason)}")
   end
 end
