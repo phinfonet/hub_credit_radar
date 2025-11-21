@@ -7,6 +7,7 @@ defmodule CreditRadarWeb.AdminAuth do
   import Plug.Conn
   import Phoenix.Controller
 
+  require Logger
   alias CreditRadar.Accounts
   alias Phoenix.LiveView
 
@@ -17,7 +18,11 @@ defmodule CreditRadarWeb.AdminAuth do
   """
   def fetch_current_admin(conn, _opts) do
     admin_id = get_session(conn, :admin_id)
+    Logger.debug("[AdminAuth] fetch_current_admin - admin_id from session: #{inspect(admin_id)}")
+
     admin = admin_id && Accounts.get_admin(admin_id)
+    Logger.debug("[AdminAuth] fetch_current_admin - admin loaded: #{inspect(admin != nil)}")
+
     assign(conn, :current_admin, admin)
   end
 
@@ -45,10 +50,19 @@ defmodule CreditRadarWeb.AdminAuth do
   Retorna a conexão atualizada com o admin na sessão.
   """
   def log_in_admin(conn, admin) do
+    Logger.info("[AdminAuth] log_in_admin - Logging in admin: #{admin.email} (id: #{admin.id})")
+
+    conn =
+      conn
+      |> put_session(:admin_id, admin.id)
+      |> assign(:current_admin, admin)
+      |> configure_session(renew: true)
+
+    # Verify session was saved
+    saved_id = get_session(conn, :admin_id)
+    Logger.info("[AdminAuth] log_in_admin - Session saved with admin_id: #{inspect(saved_id)}")
+
     conn
-    |> put_session(:admin_id, admin.id)
-    |> assign(:current_admin, admin)
-    |> configure_session(renew: true)
   end
 
   @doc """
